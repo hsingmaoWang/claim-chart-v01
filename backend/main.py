@@ -11,9 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 
-from extractor import extract_pdf_content, scrape_google_patents
-from analyzer import identify_independent_claims, extract_and_map_elements
-from pptx_generator import generate_claim_chart_pptx
+try:
+    from extractor import extract_pdf_content, scrape_google_patents
+    from analyzer import identify_independent_claims, extract_and_map_elements
+    from pptx_generator import generate_claim_chart_pptx
+except ImportError:
+    from backend.extractor import extract_pdf_content, scrape_google_patents
+    from backend.analyzer import identify_independent_claims, extract_and_map_elements
+    from backend.pptx_generator import generate_claim_chart_pptx
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
