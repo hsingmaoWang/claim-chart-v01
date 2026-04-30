@@ -1,25 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
 :root {
-  --font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  --color-bg: #0f172a; /* Slate 900 */
-  --color-surface: #1e293b; /* Slate 800 */
-  --color-primary: #3b82f6; /* Blue 500 */
-  --color-primary-hover: #2563eb; /* Blue 600 */
-  --color-text: #f8fafc; /* Slate 50 */
-  --color-text-muted: #94a3b8; /* Slate 400 */
-  --color-border: #334155; /* Slate 700 */
-  --color-accent: #10b981; /* Emerald 500 */
+  --font-family: 'Outfit', system-ui, -apple-system, sans-serif;
   
-  --radius-md: 0.5rem;
-  --radius-lg: 1rem;
+  /* Core Colors (Light Cyber Theme) */
+  --color-bg-base: #06b6d4; /* Teal / Cyan Base */
+  
+  /* Accent Colors from New Image */
+  --color-primary: #0891b2; /* Darker Cyan */
+  --color-primary-hover: #0e7490;
+  --color-primary-glow: rgba(8, 145, 178, 0.3);
+  
+  --color-secondary: #22d3ee; /* Bright Cyan */
+  --color-secondary-hover: #06b6d4;
+  --color-secondary-glow: rgba(34, 211, 238, 0.4);
+  
+  --color-accent: #ffffff; /* White highlights */
+  --color-error: #f43f5e;
+  
+  /* Modern Glassmorphism Surfaces */
+  --color-surface: rgba(255, 255, 255, 0.2);
+  --color-surface-hover: rgba(255, 255, 255, 0.3);
+  --color-border: rgba(255, 255, 255, 0.3);
+  --color-border-glow: rgba(255, 255, 255, 0.5);
+  
+  /* Typography */
+  --color-text: #083344; /* Deep Cyan-Navy */
+  --color-text-muted: #155e75;
+  --color-text-dim: #164e63;
+  
+  /* Border Radius (Following Rounded Request) */
+  --radius-sm: 0.5rem; 
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
   --radius-full: 9999px;
   
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.5);
-
-  --transition-fast: 150ms ease;
-  --transition-normal: 300ms ease;
+  /* Shadows */
+  --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -30,34 +56,56 @@
 
 body {
   font-family: var(--font-family);
-  background-color: var(--color-bg);
+  background-color: var(--color-bg-base);
   color: var(--color-text);
-  line-height: 1.5;
+  line-height: 1.6;
   min-height: 100vh;
   overflow-x: hidden;
+  /* Scaled proportionally to cover the viewport and fixed */
+  background-image: url('/images/hero-bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 #root {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* Abstract white HUD overlay - set to fixed to match background stability */
+#root::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: 
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.5;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
 }
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(20px); filter: blur(10px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 
 @keyframes pulseBorder {
-  0% { border-color: var(--color-border); }
-  50% { border-color: var(--color-primary); box-shadow: var(--shadow-glow); }
-  100% { border-color: var(--color-border); }
+  0% { border-color: var(--color-border); box-shadow: 0 0 0 transparent; }
+  50% { border-color: var(--color-accent); box-shadow: 0 0 15px var(--color-border-glow); }
+  100% { border-color: var(--color-border); box-shadow: 0 0 0 transparent; }
 }
 
 @keyframes spin {
@@ -66,11 +114,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
+  animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
 }
 
 .animate-pulse-border {
-  animation: pulseBorder 2s infinite;
+  animation: pulseBorder 3s ease-in-out infinite;
 }
 
 .animate-spin {
