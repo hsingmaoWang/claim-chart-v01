@@ -1,0 +1,7 @@
+{
+  "name": "claim-chart-v01",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npm install --prefix frontend && npm run build --prefix frontend && mkdir -p public && cp -r frontend/dist/* public/"
+  }
+}
