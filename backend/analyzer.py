@@ -10,7 +10,7 @@ def get_genai_client():
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key or api_key == "AIzaSyYourKeyHere":
         raise ValueError("Valid GEMINI_API_KEY not found in environment.")
-    return genai.Client(api_key=api_key)
+    return genai.Client(api_key=api_key, http_options={'timeout': 600000})
 
 def identify_independent_claims(text: str):
     """

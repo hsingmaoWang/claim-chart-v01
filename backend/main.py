@@ -15,16 +15,19 @@ try:
     from extractor import extract_pdf_content, scrape_google_patents
     from analyzer import identify_independent_claims, extract_and_map_elements
     from pptx_generator import generate_claim_chart_pptx
+    from mindmap_processor import router as mindmap_router
 except ImportError:
     from backend.extractor import extract_pdf_content, scrape_google_patents
     from backend.analyzer import identify_independent_claims, extract_and_map_elements
     from backend.pptx_generator import generate_claim_chart_pptx
+    from backend.mindmap_processor import router as mindmap_router
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Patent Claim Chart Generator API")
+app.include_router(mindmap_router)
 
 # Configure CORS so the React frontend can call this backend
 app.add_middleware(

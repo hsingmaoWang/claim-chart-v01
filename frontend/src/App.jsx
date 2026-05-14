@@ -4,10 +4,12 @@ import UploadZone from './components/UploadZone'
 import UrlInput from './components/UrlInput'
 import Loader from './components/Loader'
 import ResultCard from './components/ResultCard'
+import MindMapTab from './components/MindMapTab'
 
 function App() {
   const [appState, setAppState] = useState('idle'); // idle, processing, complete, error
   const [errorMessage, setErrorMessage] = useState('');
+  const [activeTab, setActiveTab] = useState('claimChart');
 
   useEffect(() => {
     const handleImport = () => {
@@ -106,45 +108,68 @@ function App() {
       </header>
 
       <main className="main-content">
-        {appState === 'idle' && (
-          <div className="input-section animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            <UploadZone onUpload={(file) => handleProcessStart('file', file)} />
-            
-            <div className="divider">
-              <span>OR</span>
-            </div>
-            
-            <UrlInput onSubmit={(url) => handleProcessStart('url', url)} />
-          </div>
-        )}
+        <div className="tab-navigation glass-panel" style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem', padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'transparent' }}>
+           <button 
+             className={activeTab === 'claimChart' ? 'btn-primary' : 'btn-secondary'} 
+             onClick={() => setActiveTab('claimChart')}
+             style={{ padding: '0.5rem 2rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
+           >
+             Claim Chart
+           </button>
+           <button 
+             className={activeTab === 'mindMap' ? 'btn-primary' : 'btn-secondary'} 
+             onClick={() => setActiveTab('mindMap')}
+             style={{ padding: '0.5rem 2rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
+           >
+             專利類別心智圖
+           </button>
+        </div>
 
-        {appState === 'processing' && (
-          <div className="processing-section animate-fade-in">
-             <Loader statusMessage="Extracting claims and figures..." />
-          </div>
-        )}
-
-        {appState === 'complete' && (
-          <div className="result-section animate-fade-in">
-            <ResultCard onReset={handleReset} onDownload={() => {
-                if (window.downloadUrl) {
-                    const a = document.createElement('a');
-                    a.href = window.downloadUrl;
-                    a.download = window.downloadFilename || 'claim_chart.pptx';
-                    a.click();
-                }
-            }} />
-          </div>
-        )}
-        
-        {appState === 'error' && (
-           <div className="error-section animate-fade-in">
-              <div className="error-card">
-                  <h3>Processing Failed</h3>
-                  <p>{errorMessage}</p>
-                  <button className="btn-secondary" onClick={handleReset}>Try Again</button>
+        {activeTab === 'claimChart' ? (
+          <>
+            {appState === 'idle' && (
+              <div className="input-section animate-fade-in" style={{ animationDelay: '0.1s' }}>
+                <UploadZone onUpload={(file) => handleProcessStart('file', file)} />
+                
+                <div className="divider">
+                  <span>OR</span>
+                </div>
+                
+                <UrlInput onSubmit={(url) => handleProcessStart('url', url)} />
               </div>
-           </div>
+            )}
+
+            {appState === 'processing' && (
+              <div className="processing-section animate-fade-in">
+                 <Loader statusMessage="Extracting claims and figures..." />
+              </div>
+            )}
+
+            {appState === 'complete' && (
+              <div className="result-section animate-fade-in">
+                <ResultCard onReset={handleReset} onDownload={() => {
+                    if (window.downloadUrl) {
+                        const a = document.createElement('a');
+                        a.href = window.downloadUrl;
+                        a.download = window.downloadFilename || 'claim_chart.pptx';
+                        a.click();
+                    }
+                }} />
+              </div>
+            )}
+            
+            {appState === 'error' && (
+               <div className="error-section animate-fade-in">
+                  <div className="error-card">
+                      <h3>Processing Failed</h3>
+                      <p>{errorMessage}</p>
+                      <button className="btn-secondary" onClick={handleReset}>Try Again</button>
+                  </div>
+               </div>
+            )}
+          </>
+        ) : (
+          <MindMapTab />
         )}
       </main>
       
