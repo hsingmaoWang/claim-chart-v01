@@ -102,78 +102,85 @@ function App() {
       <header className="hero">
         <div className="hero-content animate-fade-in">
           <div className="badge">AI Powered</div>
-          <h1>Patent Claim Chart Generator</h1>
-          <p>Instantly transform patent documents into presentation-ready claim charts. Upload a PDF or paste a Google Patents URL to begin.</p>
+          <h1 className={activeTab === 'mindMap' ? 'title-mindmap' : 'title-claimchart'}>
+             {activeTab === 'claimChart' ? 'Patent Claim Chart Generator' : 'Patent Mind Map Generator'}
+          </h1>
+          <p>
+             {activeTab === 'claimChart' 
+               ? 'Instantly transform patent documents into presentation-ready claim charts. Upload a PDF or paste a Google Patents URL to begin.' 
+               : 'AI analyzes patent categories and automatically generates an interactive Patent Mind Map. Upload a patent portfolio Excel file or PDF file to start the analysis.'}
+          </p>
         </div>
       </header>
 
-      <main className="main-content">
-        <div className="tab-navigation glass-panel" style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem', padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'transparent' }}>
-           <button 
-             className={activeTab === 'claimChart' ? 'btn-primary' : 'btn-secondary'} 
-             onClick={() => setActiveTab('claimChart')}
-             style={{ padding: '0.5rem 2rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
-           >
-             Claim Chart
-           </button>
-           <button 
-             className={activeTab === 'mindMap' ? 'btn-primary' : 'btn-secondary'} 
-             onClick={() => setActiveTab('mindMap')}
-             style={{ padding: '0.5rem 2rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
-           >
-             專利類別心智圖
-           </button>
+      {/* Fixed Left Navigation */}
+      <div className="side-navigation" style={{ position: 'fixed', left: '1rem', top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', zIndex: 100, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', borderRadius: '1rem', border: '1px solid var(--color-border)' }}>
+          <button 
+            className={activeTab === 'claimChart' ? 'btn-primary' : 'btn-secondary'} 
+            onClick={() => setActiveTab('claimChart')}
+            style={{ width: '150px', padding: '1rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
+          >
+            Claim Chart
+          </button>
+          <button 
+            className={activeTab === 'mindMap' ? 'btn-primary' : 'btn-secondary'} 
+            onClick={() => setActiveTab('mindMap')}
+            style={{ width: '150px', padding: '1rem', borderRadius: '0.5rem', fontWeight: 'bold', wordWrap: 'break-word', whiteSpace: 'normal', lineHeight: '1.2' }}
+          >
+            專利類別心智圖
+          </button>
+      </div>
+
+      <main className="main-content" style={{ marginLeft: 'auto', marginRight: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        <div style={{ width: '100%', display: activeTab === 'claimChart' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'center' }}>
+          {appState === 'idle' && (
+            <div className="input-section animate-fade-in" style={{ animationDelay: '0.1s', width: '100%', maxWidth: '800px' }}>
+              <UploadZone onUpload={(file) => handleProcessStart('file', file)} />
+              
+              <div className="divider">
+                <span>OR</span>
+              </div>
+              
+              <UrlInput onSubmit={(url) => handleProcessStart('url', url)} />
+            </div>
+          )}
+
+          {appState === 'processing' && (
+            <div className="processing-section animate-fade-in" style={{ width: '100%', maxWidth: '800px' }}>
+               <Loader statusMessage="Extracting claims and figures..." />
+            </div>
+          )}
+
+          {appState === 'complete' && (
+            <div className="result-section animate-fade-in" style={{ width: '100%', maxWidth: '800px' }}>
+              <ResultCard onReset={handleReset} onDownload={() => {
+                  if (window.downloadUrl) {
+                      const a = document.createElement('a');
+                      a.href = window.downloadUrl;
+                      a.download = window.downloadFilename || 'claim_chart.pptx';
+                      a.click();
+                  }
+              }} />
+            </div>
+          )}
+          
+          {appState === 'error' && (
+             <div className="error-section animate-fade-in" style={{ width: '100%', maxWidth: '800px' }}>
+                <div className="error-card">
+                    <h3>Processing Failed</h3>
+                    <p>{errorMessage}</p>
+                    <button className="btn-secondary" onClick={handleReset}>Try Again</button>
+                </div>
+             </div>
+          )}
         </div>
 
-        {activeTab === 'claimChart' ? (
-          <>
-            {appState === 'idle' && (
-              <div className="input-section animate-fade-in" style={{ animationDelay: '0.1s' }}>
-                <UploadZone onUpload={(file) => handleProcessStart('file', file)} />
-                
-                <div className="divider">
-                  <span>OR</span>
-                </div>
-                
-                <UrlInput onSubmit={(url) => handleProcessStart('url', url)} />
-              </div>
-            )}
-
-            {appState === 'processing' && (
-              <div className="processing-section animate-fade-in">
-                 <Loader statusMessage="Extracting claims and figures..." />
-              </div>
-            )}
-
-            {appState === 'complete' && (
-              <div className="result-section animate-fade-in">
-                <ResultCard onReset={handleReset} onDownload={() => {
-                    if (window.downloadUrl) {
-                        const a = document.createElement('a');
-                        a.href = window.downloadUrl;
-                        a.download = window.downloadFilename || 'claim_chart.pptx';
-                        a.click();
-                    }
-                }} />
-              </div>
-            )}
-            
-            {appState === 'error' && (
-               <div className="error-section animate-fade-in">
-                  <div className="error-card">
-                      <h3>Processing Failed</h3>
-                      <p>{errorMessage}</p>
-                      <button className="btn-secondary" onClick={handleReset}>Try Again</button>
-                  </div>
-               </div>
-            )}
-          </>
-        ) : (
-          <MindMapTab />
-        )}
+        <div style={{ width: '100%', display: activeTab === 'mindMap' ? 'flex' : 'none', justifyContent: 'center' }}>
+           <MindMapTab />
+        </div>
       </main>
       
-      <footer>
+      <footer style={{ textAlign: 'center', width: '100%', marginTop: '2rem' }}>
         <p>&copy; {new Date().getFullYear()} Antigravity Patent Solutions. All rights reserved.</p>
       </footer>
     </div>
