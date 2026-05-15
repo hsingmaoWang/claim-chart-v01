@@ -35,26 +35,45 @@ const buildTreeData = (patents, levels, title) => {
   const root = { name: title || '專利類別心智圖', children: [], isRoot: true };
   if (!patents || !Array.isArray(patents)) return root;
   
-  patents.forEach(patent => {
-    let currentNode = root;
+  const addPatentToTree = (currentNode, patent, levelsIdx) => {
+    if (levelsIdx >= levels.length) {
+      // Avoid duplicates if branching somehow converges (rare but safe)
+      if (!currentNode.patents.some(p => p["專利公開公告號"] === patent["專利公開公告號"])) {
+          currentNode.patents.push(patent);
+      }
+      return;
+    }
     
-    levels.forEach((lvl, idx) => {
-      const levelKey = lvl.key;
-      const nodeValue = patent[levelKey] || `未分類 (${levelKey})`;
-      
-      let childNode = currentNode.children.find(c => c.name === nodeValue);
-      if (!childNode) {
-        childNode = { name: nodeValue, children: [], patents: [] };
-        currentNode.children.push(childNode);
-      }
-      
-      if (idx === levels.length - 1) {
-        childNode.patents.push(patent);
-      }
-      
-      currentNode = childNode;
+    const levelKey = levels[levelsIdx].key;
+    let nodeValues = patent[levelKey];
+    
+    // Normalize to array
+    if (!nodeValues || (Array.isArray(nodeValues) && nodeValues.length === 0)) {
+        nodeValues = [`未分類 (${levelKey})`];
+    } else if (typeof nodeValues === 'string') {
+        if (nodeValues.includes(',') || nodeValues.includes('、')) {
+            nodeValues = nodeValues.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+        } else {
+            nodeValues = [nodeValues.trim()];
+        }
+    } else if (!Array.isArray(nodeValues)) {
+        nodeValues = [String(nodeValues)];
+    }
+    
+    // Deduplicate the chosen categories for this level to avoid redundant branches
+    nodeValues = [...new Set(nodeValues)];
+    
+    nodeValues.forEach(val => {
+        let childNode = currentNode.children.find(c => c.name === val);
+        if (!childNode) {
+            childNode = { name: val, children: [], patents: [] };
+            currentNode.children.push(childNode);
+        }
+        addPatentToTree(childNode, patent, levelsIdx + 1);
     });
-  });
+  };
+  
+  patents.forEach(patent => addPatentToTree(root, patent, 0));
   
   const updateCountsAndIds = (node, pathId) => {
     node._id = pathId;
@@ -390,14 +409,63 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
                 </h3>
                 <button onClick={() => setSelectedPatents(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.8rem', lineHeight: 1 }}>&times;</button>
             </div>
-            {selectedPatents.patents.map((p, i) => (
-                <div key={i} style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', marginBottom: '1rem', borderRadius: '0.5rem', border: '1px solid rgba(6,182,212,0.2)' }}>
-                    <h4 style={{ color: '#67e8f9', margin: '0 0 1rem 0', fontSize: '1.1rem' }}>🔖 {p["專利公開公告號"] || '無號碼'}</h4>
-                    <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#cbd5e1' }}><strong style={{color:'#e2e8f0'}}>💡 AI 技術簡述:</strong> <br/> {p["AI技術簡述"]}</p>
-                    <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#cbd5e1' }}><strong style={{color:'#e2e8f0'}}>⚙️ 技術特徵手段:</strong> <br/> {p["技術特徵手段"]}</p>
-                    <p style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0 }}><strong style={{color:'#e2e8f0'}}>✅ 解決問題/效益:</strong> <br/> {p["解決的技術問題或技術效益"]}</p>
-                </div>
-            ))}
+            {selectedPatents.patents.map((p, i) => {
+                // Helper to normalize category value to array for display
+                const toArray = (val) => {
+                    if (!val) return [];
+                    if (Array.isArray(val)) return val;
+                    if (typeof val === 'string') return val.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+                    return [String(val)];
+                };
+
+                const tech1List = toArray(p['技術1階']);
+                const tech2List = toArray(p['技術2階']);
+                const tech3List = toArray(p['技術3階']);
+
+                // Build rows: pair tech1[i] with tech2, tech3 for multi-branch display
+                // If all same length, pair them; otherwise list each independently
+                const maxRows = Math.max(tech1List.length, 1);
+                const techRows = Array.from({ length: maxRows }, (_, idx) => ({
+                    t1: tech1List[idx] || tech1List[0] || '',
+                    t2: tech2List[idx] || tech2List[0] || '',
+                    t3: tech3List[idx] || tech3List[0] || '',
+                }));
+
+                return (
+                    <div key={i} style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', marginBottom: '1rem', borderRadius: '0.5rem', border: '1px solid rgba(6,182,212,0.2)' }}>
+                        {/* Patent Number */}
+                        <h4 style={{ color: '#67e8f9', margin: '0 0 0.75rem 0', fontSize: '1.1rem' }}>🔖 {p['專利公開公告號'] || '無號碼'}</h4>
+
+                        {/* Tech Classification Tags */}
+                        <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {techRows.map((row, ri) => (
+                                <div key={ri} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                                    {row.t1 && (
+                                        <span style={{ fontSize: '0.75rem', background: 'rgba(14,165,233,0.25)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.5)', borderRadius: '0.3rem', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
+                                            T1: {row.t1}
+                                        </span>
+                                    )}
+                                    {row.t2 && (
+                                        <span style={{ fontSize: '0.75rem', background: 'rgba(99,102,241,0.25)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.5)', borderRadius: '0.3rem', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
+                                            T2: {row.t2}
+                                        </span>
+                                    )}
+                                    {row.t3 && (
+                                        <span style={{ fontSize: '0.75rem', background: 'rgba(16,185,129,0.25)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '0.3rem', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
+                                            T3: {row.t3}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* AI Summary & Details */}
+                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#cbd5e1' }}><strong style={{color:'#e2e8f0'}}>💡 AI 技術簡述:</strong> <br/> {p['AI技術簡述']}</p>
+                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#cbd5e1' }}><strong style={{color:'#e2e8f0'}}>⚙️ 技術特徵手段:</strong> <br/> {p['技術特徵手段']}</p>
+                        <p style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0 }}><strong style={{color:'#e2e8f0'}}>✅ 解決問題/效益:</strong> <br/> {p['解決的技術問題或技術效益']}</p>
+                    </div>
+                );
+            })}
          </div>
       )}
     </div>

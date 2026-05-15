@@ -51,26 +51,22 @@ def query_gemini_mindmap(text_content: str, config: MindMapConfig):
     You are an expert patent analyst. I am providing you with patent data (either from an Excel spreadsheet or a PDF).
     Your task is to analyze this data and generate a structured categorization for a Patent Mind Map.
     
-    First, identify the individual patents from the data.
-    Then, for the ENTIRE SET of patents, invent a categorization scheme with the following constraints:
-    - 應用領域 (Application Area): {config.app_area_count} categories
-    - 技術1階 (Tech Level 1): {config.tech1_count} categories
-    - 技術2階 (Tech Level 2): {config.tech2_count} categories
-    - 技術3階 (Tech Level 3): {config.tech3_count} categories
-    - 功效節點 (Efficacy Node): {config.efficacy_count} categories
-
-    These categories must make sense for the overall topic of the provided patents.
+    CRITICAL CATEGORIZATION RULES:
+    1. A single patent can be assigned to 1 to 3 categories for each level, depending on its content. Return these categories as an array of strings (e.g., ["Category A", "Category B"]).
+    2. 應用領域 (Application Area), 功效節點 (Efficacy Node), and 技術1階 (Tech Level 1) should be categorized based on the ENTIRE SET of patents. Establish overall categories: {config.app_area_count} categories for 應用領域, {config.efficacy_count} categories for 功效節點, and {config.tech1_count} categories for 技術1階.
+    3. 技術2階 (Tech Level 2) must be categorized INDEPENDENTLY within each specific 技術1階. The sub-categories for a Tech Level 1 must be derived strictly from the patents in that Tech Level 1 branch, totaling {config.tech2_count} local categories per branch.
+    4. 技術3階 (Tech Level 3) must be categorized INDEPENDENTLY within each specific combination of (技術1階 and 技術2階), totaling {config.tech3_count} local categories per branch.
     
-    Then, for EACH individual patent, generate the following fields in traditional Chinese (繁體中文):
+    For EACH individual patent, generate the following fields in traditional Chinese (繁體中文):
     1. 專利公開公告號 (Patent Publication Number - extract carefully, if missing invent a placeholder based on title)
     2. AI技術簡述 (AI Tech Summary - brief summary)
     3. 技術特徵手段 (Tech Features/Means)
     4. 解決的技術問題或技術效益 (Tech Problem/Benefit)
-    5. 應用領域 (Must be one of the application area categories you invented)
-    6. 技術1階 (Must be one of the tech level 1 categories you invented)
-    7. 技術2階 (Must be one of the tech level 2 categories you invented)
-    8. 技術3階 (Must be one of the tech level 3 categories you invented)
-    9. 功效節點 (Must be one of the efficacy node categories you invented)
+    5. 應用領域 (Array of 1 to 3 strings)
+    6. 技術1階 (Array of 1 to 3 strings)
+    7. 技術2階 (Array of 1 to 3 strings)
+    8. 技術3階 (Array of 1 to 3 strings)
+    9. 功效節點 (Array of 1 to 3 strings)
     
     Finally, give a general title for the entire mind map based on the patent collection ("mind_map_title").
     
@@ -83,12 +79,12 @@ def query_gemini_mindmap(text_content: str, config: MindMapConfig):
           "AI技術簡述": "...",
           "技術特徵手段": "...",
           "解決的技術問題或技術效益": "...",
-          "應用領域": "...",
-          "技術1階": "...",
-          "技術2階": "...",
-          "技術3階": "...",
-          "功效節點": "..."
-        }}, ...
+          "應用領域": ["..."],
+          "技術1階": ["..."],
+          "技術2階": ["..."],
+          "技術3階": ["..."],
+          "功效節點": ["..."]
+        }}
       ]
     }}
     
