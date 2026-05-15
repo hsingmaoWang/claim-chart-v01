@@ -118,7 +118,7 @@ const generateMarkdown = (node, depth = 0) => {
     return result;
 };
 
-const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
+const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureReady }) => {
   const treeContainerRef = useRef(null);
   const svgRef = useRef(null);
   const markmapRef = useRef(null);
@@ -155,7 +155,7 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
     if (treeContainerRef.current) {
       const canvas = await html2canvas(treeContainerRef.current, { 
           backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-          scale: 2 // Approximates roughly 150dpi+ depending on screen size
+          scale: 2
       });
       const image = canvas.toDataURL("image/png");
       const a = document.createElement("a");
@@ -164,6 +164,11 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
       a.click();
     }
   };
+
+  // Expose captureImage to parent via callback
+  useEffect(() => {
+    if (onCaptureReady) onCaptureReady(captureImage);
+  }, [captureImage, onCaptureReady]);
 
   const getAllPatents = (node) => {
       let pats = [];
@@ -378,10 +383,6 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
             ))}
           </SortableContext>
         </DndContext>
-        
-        <button onClick={captureImage} className="btn-primary" style={{ marginTop: '2rem', width: '100%', display: 'flex', gap: '0.5rem', justifyContent: 'center', alignItems: 'center', padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(6, 182, 212, 0.8)', color: 'white', fontWeight: 'bold', border: '1px solid #67e8f9', boxShadow: '0 0 10px rgba(6,182,212,0.3)' }}>
-           <Download size={20} /> 下載 PNG
-        </button>
       </div>
 
       {/* Main Tree Canvas using Markmap */}
