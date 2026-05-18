@@ -32,17 +32,16 @@ const SortableItem = ({ id, name }) => {
 };
 
 const buildTreeData = (patents, levels, title) => {
-  const root = { name: title || '專利類別心智圖', children: [], isRoot: true };
+  const root = { name: title || '專利類別心智圖', children: [], patents: [], isRoot: true };
   if (!patents || !Array.isArray(patents)) return root;
   
   const addPatentToTree = (currentNode, patent, levelsIdx) => {
-    if (levelsIdx >= levels.length) {
-      // Avoid duplicates if branching somehow converges (rare but safe)
-      if (!currentNode.patents.some(p => p["專利公開公告號"] === patent["專利公開公告號"])) {
-          currentNode.patents.push(patent);
-      }
-      return;
+    // Track patent at every level node it passes through
+    if (!currentNode.patents.some(p => p["專利公開公告號"] === patent["專利公開公告號"])) {
+        currentNode.patents.push(patent);
     }
+
+    if (levelsIdx >= levels.length) return;
     
     const levelKey = levels[levelsIdx].key;
     let nodeValues = patent[levelKey];
@@ -60,7 +59,7 @@ const buildTreeData = (patents, levels, title) => {
         nodeValues = [String(nodeValues)];
     }
     
-    // Deduplicate the chosen categories for this level to avoid redundant branches
+    // Deduplicate the chosen categories for this level
     nodeValues = [...new Set(nodeValues)];
     
     nodeValues.forEach(val => {
@@ -77,17 +76,12 @@ const buildTreeData = (patents, levels, title) => {
   
   const updateCountsAndIds = (node, pathId) => {
     node._id = pathId;
-    if (node.patents && node.patents.length > 0) {
-      node.count = node.patents.length;
-      return node.count;
-    }
+    // Use the count of unique patents at this specific node level
+    node.count = node.patents ? node.patents.length : 0;
+    
     if (node.children && node.children.length > 0) {
-      const sum = node.children.reduce((acc, child, i) => acc + updateCountsAndIds(child, `${pathId}-${i}`), 0);
-      node.count = sum;
-      return sum;
+      node.children.forEach((child, i) => updateCountsAndIds(child, `${pathId}-${i}`));
     }
-    node.count = 0;
-    return 0;
   };
   updateCountsAndIds(root, 'root');
   return root;
@@ -277,24 +271,29 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
              }
 
              if (clickedId) {
-                 const findNodeById = (node, id) => {
-                     if (node._id === id) return node;
+                 const findNodeById = (node, id, currentPath = []) => {
+                     const newPath = node.isRoot ? [] : [...currentPath, node.name];
+                     if (node._id === id) return { node, path: newPath };
                      if (node.children) {
                          for (let c of node.children) {
-                             const found = findNodeById(c, id);
+                             const found = findNodeById(c, id, newPath);
                              if (found) return found;
                          }
                      }
                      return null;
                  };
                  
-                 const foundNode = findNodeById(hierarchyData, clickedId);
-                 if (foundNode && !foundNode.isRoot) {
+                 const res = findNodeById(hierarchyData, clickedId);
+                 if (res && res.node && !res.node.isRoot) {
+                     const foundNode = res.node;
                      const pats = getAllPatents(foundNode);
-                     if (pats.length > 0) {
+                     // Deduplicate by Pub Number
+                     const uniquePats = Array.from(new Map(pats.map(p => [p["專利公開公告號"], p])).values());
+                     if (uniquePats.length > 0) {
                         setSelectedPatents({
                             category: foundNode.name,
-                            patents: pats
+                            path: res.path,
+                            patents: uniquePats
                         });
                      }
                  }
@@ -305,14 +304,13 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
              const rawText = (nodeG.textContent || "").trim();
              if (!rawText) return;
              
-             // Extract all valid names from tree to match safely against rawText
+             // Extract all valid names from tree
              const findAllNames = (node, list = []) => {
                  list.push(node.name ? node.name.replace(/\n/g, ' ').replace(/#/g, '') : "未命名");
                  if (node.children) node.children.forEach(c => findAllNames(c, list));
                  return list;
              };
              
-             // sort by descending length to match "Category A" before "Category"
              const allNames = findAllNames(hierarchyData).sort((a,b) => b.length - a.length);
              
              let matchedName = null;
@@ -324,25 +322,29 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
              }
 
              if (matchedName) {
-                 const findNode = (node, name) => {
+                 const findNode = (node, name, currentPath = []) => {
+                     const newPath = node.isRoot ? [] : [...currentPath, node.name];
                      const safeName = node.name ? node.name.replace(/\n/g, ' ').replace(/#/g, '') : "未命名";
-                     if (safeName === name) return node;
+                     if (safeName === name) return { node, path: newPath };
                      if (node.children) {
                          for(let c of node.children) {
-                            const found = findNode(c, name);
+                            const found = findNode(c, name, newPath);
                             if(found) return found;
                          }
                      }
                      return null;
                  };
                  
-                 const foundNode = findNode(hierarchyData, matchedName);
-                 if (foundNode && !foundNode.isRoot) {
+                 const res = findNode(hierarchyData, matchedName);
+                 if (res && res.node && !res.node.isRoot) {
+                     const foundNode = res.node;
                      const pats = getAllPatents(foundNode);
-                     if (pats.length > 0) {
+                     const uniquePats = Array.from(new Map(pats.map(p => [p["專利公開公告號"], p])).values());
+                     if (uniquePats.length > 0) {
                         setSelectedPatents({
                             category: foundNode.name,
-                            patents: pats
+                            path: res.path,
+                            patents: uniquePats
                         });
                      }
                  }
@@ -401,71 +403,58 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy }) => {
 
       {/* Patent List Modal / Panel */}
       {selectedPatents && (
-         <div style={{ position: 'absolute', top: 0, right: 0, width: '450px', height: '100%', background: 'rgba(2, 6, 23, 0.95)', borderLeft: '1px solid rgba(6,182,212,0.5)', padding: '1.5rem', overflowY: 'auto', zIndex: 20, backdropFilter: 'blur(10px)', color: '#fff', boxShadow: '-10px 0 20px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(6,182,212,0.3)', paddingBottom: '1rem' }}>
-                <h3 style={{ fontSize: '1.2rem', color: '#22d3ee', margin: 0, textShadow: '0 0 5px rgba(34,211,238,0.5)' }}>
-                  分類: {selectedPatents.category} 
-                  <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginLeft: '0.5rem' }}>({selectedPatents.patents.length})</span>
-                </h3>
-                <button onClick={() => setSelectedPatents(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.8rem', lineHeight: 1 }}>&times;</button>
+         <div style={{ position: 'absolute', top: 0, right: 0, width: '450px', height: '100%', background: 'rgba(2, 6, 23, 0.95)', borderLeft: '1px solid rgba(6,182,212,0.5)', zIndex: 20, backdropFilter: 'blur(10px)', color: '#fff', boxShadow: '-10px 0 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            
+            {/* Sticky Header Section */}
+            <div style={{ background: 'rgba(2, 6, 23, 0.98)', zIndex: 30, padding: '1.5rem 1.5rem 0 1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                    <h3 style={{ fontSize: '1.2rem', color: '#22d3ee', margin: 0, textShadow: '0 0 5px rgba(34,211,238,0.5)' }}>
+                      分類: {selectedPatents.category} 
+                      <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginLeft: '0.5rem' }}>({selectedPatents.patents.length})</span>
+                    </h3>
+                    <button onClick={() => setSelectedPatents(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.8rem', lineHeight: 1 }}>&times;</button>
+                </div>
+
+                {/* Global Hierarchy Path Tags - Color Coded By Level */}
+                <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center', borderBottom: '1px solid rgba(6,182,212,0.3)', paddingBottom: '1.2rem' }}>
+                    {selectedPatents.path && selectedPatents.path.map((step, si) => {
+                        const levelColors = [
+                            { bg: 'rgba(14,165,233,0.15)', text: '#38bdf8', border: 'rgba(14,165,233,0.3)' },
+                            { bg: 'rgba(99,102,241,0.15)', text: '#818cf8', border: 'rgba(99,102,241,0.3)' },
+                            { bg: 'rgba(16,185,129,0.15)', text: '#34d399', border: 'rgba(16,185,129,0.3)' },
+                            { bg: 'rgba(245,158,11,0.15)', text: '#fbbf24', border: 'rgba(245,158,11,0.3)' },
+                            { bg: 'rgba(236,72,153,0.15)', text: '#f472b6', border: 'rgba(236,72,153,0.3)' }
+                        ];
+                        const currentColor = levelColors[si] || levelColors[levelColors.length - 1];
+                        const nextColor = levelColors[si + 1] || levelColors[levelColors.length - 1];
+                        
+                        return (
+                            <React.Fragment key={si}>
+                                <span style={{ fontSize: '0.75rem', background: currentColor.bg, color: currentColor.text, border: `1px solid ${currentColor.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.5rem' }}>
+                                    {step}
+                                </span>
+                                {si < selectedPatents.path.length - 1 && (
+                                    <span style={{ color: nextColor.text, fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0.1rem' }}>&gt;</span>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
             </div>
-            {selectedPatents.patents.map((p, i) => {
-                // Helper to normalize category value to array for display
-                const toArray = (val) => {
-                    if (!val) return [];
-                    if (Array.isArray(val)) return val;
-                    if (typeof val === 'string') return val.split(/[,、]/).map(s => s.trim()).filter(Boolean);
-                    return [String(val)];
-                };
 
-                const tech1List = toArray(p['技術1階']);
-                const tech2List = toArray(p['技術2階']);
-                const tech3List = toArray(p['技術3階']);
-
-                // Build rows: pair tech1[i] with tech2, tech3 for multi-branch display
-                // If all same length, pair them; otherwise list each independently
-                const maxRows = Math.max(tech1List.length, 1);
-                const techRows = Array.from({ length: maxRows }, (_, idx) => ({
-                    t1: tech1List[idx] || tech1List[0] || '',
-                    t2: tech2List[idx] || tech2List[0] || '',
-                    t3: tech3List[idx] || tech3List[0] || '',
-                }));
-
-                return (
-                    <div key={i} style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', marginBottom: '1rem', borderRadius: '0.5rem', border: '1px solid rgba(6,182,212,0.2)' }}>
-                        {/* Patent Number */}
-                        <h4 style={{ color: '#67e8f9', margin: '0 0 0.75rem 0', fontSize: '1.1rem' }}>🔖 {p['專利公開公告號'] || '無號碼'}</h4>
-
-                        {/* Tech Classification Tags */}
-                        <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                            {techRows.map((row, ri) => (
-                                <div key={ri} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
-                                    {row.t1 && (
-                                        <span style={{ fontSize: '0.75rem', background: 'rgba(14,165,233,0.25)', color: '#38bdf8', border: '1px solid rgba(14,165,233,0.5)', borderRadius: '0.3rem', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
-                                            T1: {row.t1}
-                                        </span>
-                                    )}
-                                    {row.t2 && (
-                                        <span style={{ fontSize: '0.75rem', background: 'rgba(99,102,241,0.25)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.5)', borderRadius: '0.3rem', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
-                                            T2: {row.t2}
-                                        </span>
-                                    )}
-                                    {row.t3 && (
-                                        <span style={{ fontSize: '0.75rem', background: 'rgba(16,185,129,0.25)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '0.3rem', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap' }}>
-                                            T3: {row.t3}
-                                        </span>
-                                    )}
-                                </div>
-                            ))}
+            {/* Scrollable Patent content Section */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+                {selectedPatents.patents.map((p, i) => {
+                    return (
+                        <div key={i} style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', marginBottom: '1rem', borderRadius: '0.5rem', border: '1px solid rgba(6,182,212,0.1)' }}>
+                            <h4 style={{ color: '#67e8f9', margin: '0 0 0.8rem 0', fontSize: '1.1rem' }}>🔖 {p['專利公開公告號'] || '無號碼'}</h4>
+                            <p style={{ fontSize: '0.9rem', marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.5' }}><strong style={{color:'#e2e8f0'}}>💡 AI 技術簡述:</strong> <br/> {p['AI技術簡述']}</p>
+                            <p style={{ fontSize: '0.9rem', marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.5' }}><strong style={{color:'#e2e8f0'}}>⚙️ 技術特徵手段:</strong> <br/> {p['技術特徵手段']}</p>
+                            <p style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0, lineHeight: '1.5' }}><strong style={{color:'#e2e8f0'}}>✅ 解決問題/效益:</strong> <br/> {p['解決的技術問題或技術效益']}</p>
                         </div>
-
-                        {/* AI Summary & Details */}
-                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#cbd5e1' }}><strong style={{color:'#e2e8f0'}}>💡 AI 技術簡述:</strong> <br/> {p['AI技術簡述']}</p>
-                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#cbd5e1' }}><strong style={{color:'#e2e8f0'}}>⚙️ 技術特徵手段:</strong> <br/> {p['技術特徵手段']}</p>
-                        <p style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0 }}><strong style={{color:'#e2e8f0'}}>✅ 解決問題/效益:</strong> <br/> {p['解決的技術問題或技術效益']}</p>
-                    </div>
-                );
-            })}
+                    );
+                })}
+            </div>
          </div>
       )}
     </div>
