@@ -26,6 +26,7 @@ const MindMapTab = () => {
   ]);
 
   const [isDragging, setIsDragging] = useState(false);
+  const [captureImage, setCaptureImage] = useState(null);
 
   const processFile = async (file) => {
     if (!file) return;
@@ -221,7 +222,10 @@ const MindMapTab = () => {
             </div>
             <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
             <div style={{ flex: 1 }} />
-            <button onClick={handleExportExcel} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-primary)', color: 'white', cursor: 'pointer' }}>下載 Excel (AG)</button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={() => captureImage && captureImage()} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 182, 212, 0.8)', color: 'white', cursor: 'pointer', border: '1px solid #67e8f9' }}>下載 PNG</button>
+              <button onClick={handleExportExcel} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-primary)', color: 'white', cursor: 'pointer' }}>下載 Excel</button>
+            </div>
           </div>
 
           <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
@@ -229,6 +233,7 @@ const MindMapTab = () => {
               treeData={treeData}
               levelHierarchy={levelHierarchy}
               setLevelHierarchy={setLevelHierarchy}
+              onCaptureReady={setCaptureImage}
             />
 
             {/* Start New Button - Bottom Left of the result panel */}
