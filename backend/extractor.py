@@ -1,40 +1,53 @@
 # Extractor module for parsing PDFs and scraping URLs
-import fitz # PyMuPDF
 import requests
 from bs4 import BeautifulSoup
 import os
 
 def extract_pdf_content(file_path: str, output_image_dir: str = "temp_images"):
     """
-    Extracts text and reference images from a given PDF file.
-    Saves images to output_image_dir and returns text and list of image paths.
+    Extracts text and reference images from a given PDF file using pure-python/stable libraries.
+    Replaced PyMuPDF (fitz) with pdfplumber/pypdf to avoid DLL loading issues.
     """
+    import pdfplumber
+    from pypdf import PdfReader
+    
     if not os.path.exists(output_image_dir):
         os.makedirs(output_image_dir)
         
-    doc = fitz.open(file_path)
     full_text = ""
     extracted_images = []
     
-    for i in range(len(doc)):
-        page = doc[i]
-        full_text += page.get_text() + "\n"
-        
-        image_list = page.get_images()
-        for img_index, img in enumerate(image_list):
-            xref = img[0]
-            base_image = doc.extract_image(xref)
-            image_bytes = base_image["image"]
-            image_ext = base_image["ext"]
-            
-            image_filename = os.path.join(output_image_dir, f"page{i+1}_img{img_index}.{image_ext}")
-            with open(image_filename, "wb") as f:
-                f.write(image_bytes)
-                
-            extracted_images.append({
-                "fig_id": f"Page {i+1} Figure {img_index}",
-                "image_path": image_filename
-            })
+    # 1. Extract Text using pdfplumber (best for layout preservation and text)
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    full_text += text + "\n"
+    except Exception as e:
+        print(f"Text extraction failed: {e}")
+
+    # 2. Extract Images using pypdf (more stable pure-python approach)
+    try:
+        reader = PdfReader(file_path)
+        for i, page in enumerate(reader.pages):
+            for img_index, image_obj in enumerate(page.images):
+                try:
+                    # Clean up filename and save
+                    ext = image_obj.name.split('.')[-1] if '.' in image_obj.name else "png"
+                    image_filename = os.path.join(output_image_dir, f"page{i+1}_img{img_index}.{ext}")
+                    
+                    with open(image_filename, "wb") as f:
+                        f.write(image_obj.data)
+                        
+                    extracted_images.append({
+                        "fig_id": f"Page {i+1} Figure {img_index}",
+                        "image_path": image_filename
+                    })
+                except Exception as img_err:
+                    print(f"Skipping an image on page {i+1}: {img_err}")
+    except Exception as e:
+        print(f"Image extraction via pypdf failed: {e}")
             
     return {"text": full_text, "figures": extracted_images}
 

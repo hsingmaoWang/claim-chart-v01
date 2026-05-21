@@ -1,5 +1,7 @@
 import os
 import json
+import base64
+import requests
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -16,7 +18,7 @@ def identify_independent_claims(text: str):
     """
     Uses Gemini LLM to find independent claims within a body of patent claims.
     """
-    client = get_genai_client()
+    provider = os.environ.get("API_PROVIDER", "gemini").lower()
     
     prompt = f"""
     You are a patent attorney. I am providing you with the text of a patent document.
@@ -28,17 +30,43 @@ def identify_independent_claims(text: str):
     {text}
     """
     
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(response_mime_type="application/json")
-    )
-    
-    try:
-        return json.loads(response.text)
-    except Exception as e:
-        print("Failed to parse claims from LLM:", e)
-        return []
+    if provider == "openrouter":
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            raise ValueError("Valid OPENROUTER_API_KEY not found in environment.")
+            
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {openrouter_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "google/gemini-2.5-flash",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}
+            }
+        )
+        response.raise_for_status()
+        data = response.json()
+        try:
+            return json.loads(data["choices"][0]["message"]["content"])
+        except Exception as e:
+            print("Failed to parse claims from OpenRouter:", e)
+            return []
+    else:
+        client = get_genai_client()
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        
+        try:
+            return json.loads(response.text)
+        except Exception as e:
+            print("Failed to parse claims from LLM:", e)
+            return []
 
 def extract_and_map_elements(claim_text: str, figures_list: list):
     """
@@ -47,7 +75,6 @@ def extract_and_map_elements(claim_text: str, figures_list: list):
     
     figures_list is a list of dicts: [{"fig_id": "Fig 1", "image_path": "path/to/img"}, ...]
     """
-    client = get_genai_client()
     from PIL import Image
     
     prompt = f"""
@@ -71,23 +98,67 @@ def extract_and_map_elements(claim_text: str, figures_list: list):
     """
     contents = [prompt]
     
+    # Setup for openrouter
+    provider = os.environ.get("API_PROVIDER", "gemini").lower()
+    openrouter_content_array = [{"type": "text", "text": prompt}]
+    
     # Append PIL images and their IDs
     for fig in figures_list:
         try:
             img = Image.open(fig["image_path"])
             contents.append(f"Figure ID: {fig['fig_id']}")
             contents.append(img)
+            
+            if provider == "openrouter":
+                with open(fig["image_path"], "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                img_format = "jpeg"
+                if fig["image_path"].lower().endswith(".png"): img_format = "png"
+                
+                openrouter_content_array.append({"type": "text", "text": f"Figure ID: {fig['fig_id']}"})
+                openrouter_content_array.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/{img_format};base64,{encoded_string}"
+                    }
+                })
         except Exception as e:
             print(f"Could not load image {fig['image_path']}: {e}")
             
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=contents,
-        config=types.GenerateContentConfig(response_mime_type="application/json")
-    )
-    
-    try:
-         return json.loads(response.text)
-    except Exception as e:
-         print("Failed to parse elements from LLM:", e)
-         return {"best_figure_id": "", "elements": []}
+    if provider == "openrouter":
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            raise ValueError("Valid OPENROUTER_API_KEY not found in environment.")
+            
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {openrouter_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "google/gemini-2.5-flash",
+                "messages": [{"role": "user", "content": openrouter_content_array}],
+                "response_format": {"type": "json_object"}
+            }
+        )
+        response.raise_for_status()
+        data = response.json()
+        try:
+             return json.loads(data["choices"][0]["message"]["content"])
+        except Exception as e:
+             print("Failed to parse elements from OpenRouter:", e)
+             return {"best_figure_id": "", "elements": []}
+    else:
+        client = get_genai_client() # Move initialization here
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=contents,
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        
+        try:
+             return json.loads(response.text)
+        except Exception as e:
+             print("Failed to parse elements from LLM:", e)
+             return {"best_figure_id": "", "elements": []}

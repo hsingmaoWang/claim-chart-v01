@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import html2canvas from 'html2canvas';
 import { Download, Sun, Moon } from 'lucide-react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
@@ -31,8 +31,18 @@ const SortableItem = ({ id, name }) => {
   );
 };
 
+const wrapTitle = (title, charsPerLine = 12) => {
+  if (!title || title.length <= charsPerLine) return title;
+  const lines = [];
+  for (let i = 0; i < title.length; i += charsPerLine) {
+    lines.push(title.slice(i, i + charsPerLine));
+  }
+  return lines.join('\n');
+};
+
 const buildTreeData = (patents, levels, title) => {
-  const root = { name: title || '專利類別心智圖', children: [], patents: [], isRoot: true };
+  const wrappedTitle = wrapTitle(title || '專利類別心智圖');
+  const root = { name: wrappedTitle, children: [], patents: [], isRoot: true };
   if (!patents || !Array.isArray(patents)) return root;
   
   const addPatentToTree = (currentNode, patent, levelsIdx) => {
@@ -48,7 +58,7 @@ const buildTreeData = (patents, levels, title) => {
     
     // Normalize to array
     if (!nodeValues || (Array.isArray(nodeValues) && nodeValues.length === 0)) {
-        nodeValues = [`未分類 (${levelKey})`];
+        nodeValues = ['其他'];
     } else if (typeof nodeValues === 'string') {
         if (nodeValues.includes(',') || nodeValues.includes('、')) {
             nodeValues = nodeValues.split(/[,、]/).map(s => s.trim()).filter(Boolean);
@@ -89,7 +99,10 @@ const buildTreeData = (patents, levels, title) => {
 
 const generateMarkdown = (node, depth = 0) => {
     let result = '';
-    const safeName = node.name ? node.name.replace(/\n/g, ' ').replace(/#/g, '') : "未命名";
+    // For root node (depth=0), preserve \n for multi-line rendering
+    const safeName = (depth === 0)
+        ? (node.name ? node.name.replace(/#/g, '') : '未命名')
+        : (node.name ? node.name.replace(/\n/g, ' ').replace(/#/g, '') : '未命名');
     const countText = (node.count && depth > 0) ? `(${node.count})` : '';
     const idSpan = `<span data-nodeid="${node._id}" style="display:none"></span>`;
     
@@ -142,26 +155,36 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
         }
     }
     if (!patentsArray || !Array.isArray(patentsArray)) patentsArray = [];
-    return buildTreeData(patentsArray, levelHierarchy, treeData.mind_map_title || "專利類別心智圖");
+    return buildTreeData(patentsArray, levelHierarchy, treeData.summary_title || treeData.mind_map_title || "專利類別心智圖");
   }, [treeData, levelHierarchy]);
 
-  const captureImage = async () => {
+  const captureImage = useCallback(async () => {
     if (treeContainerRef.current) {
-      const canvas = await html2canvas(treeContainerRef.current, { 
-          backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-          scale: 2
-      });
-      const image = canvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = image;
-      a.download = "markmap_cyber.png";
-      a.click();
+      try {
+        const canvas = await html2canvas(treeContainerRef.current, { 
+            backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+            scale: 2,
+            useCORS: true
+        });
+        const image = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = image;
+        
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
+        a.download = `markmap_cyber_${timestamp}.png`;
+        a.click();
+      } catch (err) {
+        console.error("Failed to capture image", err);
+      }
     }
-  };
+  }, [theme]);
 
   // Expose captureImage to parent via callback
   useEffect(() => {
-    if (onCaptureReady) onCaptureReady(captureImage);
+    if (onCaptureReady) {
+        onCaptureReady(() => captureImage);
+    }
   }, [captureImage, onCaptureReady]);
 
   const getAllPatents = (node) => {
