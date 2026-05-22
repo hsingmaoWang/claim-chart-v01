@@ -324,7 +324,7 @@ def query_gemini_mindmap(text_content: str, config: MindMapConfig, df=None):
 - 請分析輸入專利，為每件專利匹配最合適的「應用領域」與「功效節點」標籤陣列。
 - 為每件專利匹配其符合層級依附的「技術路徑」陣列（即：從技術1階到技術3階的完整路徑，例如：["半導體", "先進封裝", "矽光子"]）。
 - 一件專利可同時對應多條技術路徑。
-- 產出一個 summary_title 概括這批專利的技術主題。
+- 產出一個 summary_title 概括這批專利的核心技術主題，必須是完整且有意義的名詞短語（例如：「光子積體電路技術與應用」、「半導體先進封裝技術」），嚴禁截斷、殘留孤立字符或以動詞結尾（例如不得輸出「…技術與應用分」或「…技術之研究」這類不完整字串）。
 - 務必調整分類命名的廣度 (Generalization/Specialization) 使得輸出的分類總數不違反限制。
 
 【格式】ONLY output a JSON object with keys: summary_title (string), patents (array).
@@ -387,7 +387,7 @@ Each patent object MUST follow this exact schema:
 請閱讀這批專利特徵，構建一套最合適的、階層關係語意正確的分類目錄。
 請輸出一個 JSON 物件，包含以下欄位：
 {{
-  "summary_title": "概括主題",
+  "summary_title": "完整且有意義的技術主題名詞短語（例如：光子積體電路技術與應用），嚴禁截斷或殘留孤立字符",
   "應用領域": ["領域A", "領域B"],
   "技術樹": [
     {{
