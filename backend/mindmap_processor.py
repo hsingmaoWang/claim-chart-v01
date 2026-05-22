@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class MindMapConfig(BaseModel):
-    app_area_count: str = "4"
-    tech1_count: str = "4"
-    tech2_count: str = "5"
-    tech3_count: str = "4"
-    efficacy_count: str = "4"
+    app_area_count: str = "3~5"
+    tech1_count: str = "3~5"
+    tech2_count: str = "3~7"
+    tech3_count: str = "3~7"
+    efficacy_count: str = "3~6"
     file_id: str = ""
 
 def extract_patents_from_excel(file_path):
@@ -84,11 +84,11 @@ def enforce_category_limits(patents: list, config: MindMapConfig) -> list:
         except: return default
 
     limits = {
-        "技術1階": safe_int(config.tech1_count, 4),
-        "技術2階": safe_int(config.tech2_count, 5),
-        "技術3階": safe_int(config.tech3_count, 4),
-        "應用領域": safe_int(config.app_area_count, 4),
-        "功效節點": safe_int(config.efficacy_count, 4),
+        "技術1階": safe_int(config.tech1_count, 10),
+        "技術2階": safe_int(config.tech2_count, 10),
+        "技術3階": safe_int(config.tech3_count, 10),
+        "應用領域": safe_int(config.app_area_count, 10),
+        "功效節點": safe_int(config.efficacy_count, 10),
     }
 
     def normalize_to_list(val):
