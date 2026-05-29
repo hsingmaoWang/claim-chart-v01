@@ -10,6 +10,45 @@ function App() {
   const [appState, setAppState] = useState('idle'); // idle, processing, complete, error
   const [errorMessage, setErrorMessage] = useState('');
   const [activeTab, setActiveTab] = useState('claimChart');
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+      return;
+    }
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    });
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      setPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragStart]);
 
   useEffect(() => {
     const handleImport = () => {
@@ -114,7 +153,51 @@ function App() {
       </header>
 
       {/* Fixed Left Navigation */}
-      <div className="side-navigation" style={{ position: 'fixed', left: '1rem', top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', zIndex: 100, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', borderRadius: '1rem', border: '1px solid var(--color-border)' }}>
+      <div 
+        className="side-navigation" 
+        onMouseDown={handleMouseDown}
+        style={{ 
+          position: 'fixed', 
+          left: `calc(1rem + ${position.x}px)`, 
+          top: `calc(50% + ${position.y}px)`, 
+          transform: 'translateY(-50%)', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '1rem', 
+          padding: '1rem', 
+          zIndex: 100, 
+          background: 'rgba(0,0,0,0.4)', 
+          backdropFilter: 'blur(10px)', 
+          borderRadius: '1rem', 
+          border: '1px solid var(--color-border)',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          userSelect: 'none'
+        }}
+      >
+          {/* Subtle drag handle grid */}
+          <div 
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              gap: '3px', 
+              padding: '2px 0 6px', 
+              cursor: 'grab', 
+              opacity: 0.5 
+            }}
+          >
+            <div style={{ display: 'flex', gap: '3px' }}>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'white' }}></span>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'white' }}></span>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'white' }}></span>
+            </div>
+            <div style={{ display: 'flex', gap: '3px' }}>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'white' }}></span>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'white' }}></span>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'white' }}></span>
+            </div>
+          </div>
+
           <button 
             className={activeTab === 'claimChart' ? 'btn-primary' : 'btn-secondary'} 
             onClick={() => setActiveTab('claimChart')}
@@ -146,13 +229,23 @@ function App() {
           )}
 
           {appState === 'processing' && (
-            <div className="processing-section animate-fade-in" style={{ width: '100%', maxWidth: '800px' }}>
+            <div className="processing-section animate-fade-in" style={{
+              width: '100%',
+              maxWidth: '800px',
+              display: 'flex',
+              justifyContent: 'center'
+            }}>
                <Loader statusMessage="Extracting claims and figures..." />
             </div>
           )}
 
           {appState === 'complete' && (
-            <div className="result-section animate-fade-in" style={{ width: '100%', maxWidth: '800px' }}>
+            <div className="result-section animate-fade-in" style={{
+              width: '100%',
+              maxWidth: '800px',
+              display: 'flex',
+              justifyContent: 'center'
+            }}>
               <ResultCard onReset={handleReset} onDownload={() => {
                   if (window.downloadUrl) {
                       const a = document.createElement('a');
@@ -165,7 +258,12 @@ function App() {
           )}
           
           {appState === 'error' && (
-             <div className="error-section animate-fade-in" style={{ width: '100%', maxWidth: '800px' }}>
+             <div className="error-section animate-fade-in" style={{
+               width: '100%',
+               maxWidth: '800px',
+               display: 'flex',
+               justifyContent: 'center'
+             }}>
                 <div className="error-card">
                     <h3>Processing Failed</h3>
                     <p>{errorMessage}</p>

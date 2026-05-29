@@ -2,11 +2,38 @@ import os
 import json
 import base64
 import requests
+import ssl
+import httpx
+import truststore
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
 load_dotenv()
+
+def send_openrouter_request(payload: dict, timeout: float = 60.0) -> dict:
+    """
+    Unified helper to send POST requests to OpenRouter API using truststore and httpx.
+    Resolves corporate proxy/self-signed SSL certificate issues using the OS trust store.
+    """
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if not openrouter_key:
+        raise ValueError("Valid OPENROUTER_API_KEY not found in environment.")
+        
+    headers = {
+        "Authorization": f"Bearer {openrouter_key}",
+        "Content-Type": "application/json"
+    }
+    
+    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    with httpx.Client(verify=ctx, timeout=timeout) as http_client:
+        response = http_client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
 
 def get_genai_client():
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -31,25 +58,13 @@ def identify_independent_claims(text: str):
     """
     
     if provider == "openrouter":
-        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-        if not openrouter_key:
-            raise ValueError("Valid OPENROUTER_API_KEY not found in environment.")
-            
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {openrouter_key}",
-                "Content-Type": "application/json"
-            },
-            json={
+        try:
+            payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"}
             }
-        )
-        response.raise_for_status()
-        data = response.json()
-        try:
+            data = send_openrouter_request(payload, timeout=180.0)
             return json.loads(data["choices"][0]["message"]["content"])
         except Exception as e:
             print("Failed to parse claims from OpenRouter:", e)
@@ -126,26 +141,14 @@ def extract_and_map_elements(claim_text: str, figures_list: list):
             print(f"Could not load image {fig['image_path']}: {e}")
             
     if provider == "openrouter":
-        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-        if not openrouter_key:
-            raise ValueError("Valid OPENROUTER_API_KEY not found in environment.")
-            
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {openrouter_key}",
-                "Content-Type": "application/json"
-            },
-            json={
+        try:
+            payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": openrouter_content_array}],
                 "response_format": {"type": "json_object"}
             }
-        )
-        response.raise_for_status()
-        data = response.json()
-        try:
-             return json.loads(data["choices"][0]["message"]["content"])
+            data = send_openrouter_request(payload, timeout=300.0)
+            return json.loads(data["choices"][0]["message"]["content"])
         except Exception as e:
              print("Failed to parse elements from OpenRouter:", e)
              return {"best_figure_id": "", "elements": []}

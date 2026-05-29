@@ -95,19 +95,14 @@ ONLY output raw JSON. Do not include markdown blocks like ```json in the final r
 """
     try:
         if provider == "openrouter":
-            import httpx, ssl, truststore
-            ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.1
             }
-            with httpx.Client(verify=ctx, timeout=60.0) as http_client:
-                resp = http_client.post("https://openrouter.ai/api/v1/chat/completions",
-                                       headers={"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}"},
-                                       json=payload)
-                response_text = resp.json()["choices"][0]["message"]["content"]
+            resp_data = analyzer.send_openrouter_request(payload, timeout=60.0)
+            response_text = resp_data["choices"][0]["message"]["content"]
         else:
             if client is None:
                 client = get_genai_client()
@@ -296,19 +291,14 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
     try:
         response_text = ""
         if provider == "openrouter":
-            import httpx, ssl, truststore
-            ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.1, "max_tokens": 16000
             }
-            with httpx.Client(verify=ctx, timeout=600.0) as http_client:
-                resp = http_client.post("https://openrouter.ai/api/v1/chat/completions",
-                                   headers={"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}"},
-                                   json=payload)
-                response_text = resp.json()["choices"][0]["message"]["content"]
+            resp_data = analyzer.send_openrouter_request(payload, timeout=600.0)
+            response_text = resp_data["choices"][0]["message"]["content"]
         else:
             resp = client.models.generate_content(
                 model="gemini-2.5-flash", contents=prompt,
@@ -506,19 +496,14 @@ async def generate_stage2(data: dict):
             try:
                 response_text = ""
                 if provider == "openrouter":
-                    import httpx, ssl, truststore
-                    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                     payload = {
                         "model": "google/gemini-2.5-flash",
                         "messages": [{"role": "user", "content": prompt}],
                         "response_format": {"type": "json_object"},
                         "temperature": 0.1, "max_tokens": 16000
                     }
-                    with httpx.Client(verify=ctx, timeout=300.0) as http_client:
-                        resp = http_client.post("https://openrouter.ai/api/v1/chat/completions",
-                                           headers={"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}"},
-                                           json=payload)
-                        response_text = resp.json()["choices"][0]["message"]["content"]
+                    resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
+                    response_text = resp_data["choices"][0]["message"]["content"]
                 else:
                     resp = client.models.generate_content(
                         model="gemini-2.5-flash", contents=prompt,
