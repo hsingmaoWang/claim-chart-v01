@@ -55,23 +55,40 @@ def robust_json_decode(text):
     text = re.sub(r'\s*```$', '', text)
     # 清除控制字元（這是 Unterminated string 的主要元兇）
     text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+    
+    # 1. 嘗試直接解析
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("Standard JSON parse failed, initiating regex recovery...")
-        objs = re.findall(r'\{(?:[^{}]|\{[^{}]*\})*\}', text)
-        patents = []
-        for obj_str in objs:
-            try:
-                clean_obj = re.sub(r',\s*}', '}', obj_str)
-                p_item = json.loads(clean_obj)
-                if "專利公開公告號" in p_item:
-                    patents.append(p_item)
-            except:
-                continue
-        if patents:
-            return {"patents": patents}
-        raise ValueError("Could not recover valid JSON.")
+        pass
+
+    # 2. 嘗試尋找外層的第一個 { 和最後一個 } 並進行解析
+    start_idx = text.find('{')
+    end_idx = text.rfind('}')
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        try:
+            candidate = text[start_idx:end_idx+1]
+            # 移除可能的多餘尾隨逗號
+            candidate = re.sub(r',\s*([\]}])', r'\1', candidate)
+            return json.loads(candidate)
+        except Exception:
+            pass
+
+    # 3. 專利映射復原 (Legacy regex recovery)
+    logger.warning("Standard JSON parse failed, initiating regex recovery...")
+    objs = re.findall(r'\{(?:[^{}]|\{[^{}]*\})*\}', text)
+    patents = []
+    for obj_str in objs:
+        try:
+            clean_obj = re.sub(r',\s*}', '}', obj_str)
+            p_item = json.loads(clean_obj)
+            if "專利公開公告號" in p_item:
+                patents.append(p_item)
+        except:
+            continue
+    if patents:
+        return {"patents": patents}
+    raise ValueError("Could not recover valid JSON.")
 
 def refine_categories_with_ai(parent_name, subcategories, max_count, provider, client=None):
     """
@@ -250,7 +267,7 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
 
     # Stage 1: Generate global level 1 & 2 taxonomy, application areas, and efficacy nodes.
     prompt = f"""你是專利分類專家，請對這批專利進行語意分類與樹狀結構建模。
-請注意：本階段【只生成技術1階與技術2階，不要生成技術3階】。
+請注意：本階段【只生成全域的分類樹架構，不要對具體專利進行映射或分配，也不要生成技術3階】。
 
 【分類限制要求】：
 1. 應用領域：預設分類數量限制為 {config.app_area_count} 個。
@@ -260,13 +277,11 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
    - 技術2階（依附於技術1階）：在每個「技術1階」下，分類為 {config.tech2_count} 個子技術類別。
 
 【任務與格式規定】：
-- 請構建全域分類目錄，並為每件專利匹配最合適的「應用領域」與「功效節點」標籤（可多選）。
-- 為每件專利匹配符合層級依附的「技術路徑」陣列（即：從技術1階到技術2階的完整路徑，例如：["半導體", "先進封裝"]）。
-- 一件專利可同時對應多條技術路徑。
+- 請構建全域分類目錄。
 - 產出一個 summary_title 概括這批專利的核心技術主題，必須是完整且有意義的名詞短語（例如：「光子積體電路技術與應用」、「半導體先進封裝技術」）。
 - 務必調整分類命名的廣度 (Generalization/Specialization) 使得輸出的分類總數不違反上述限制。
 
-【格式】ONLY output a JSON object with keys: summary_title (string), 應用領域 (array of strings), 功效節點 (array of strings), 技術樹 (array of objects), patents (array of objects).
+【格式】ONLY output a JSON object with keys: summary_title (string), 應用領域 (array of strings), 功效節點 (array of strings), 技術樹 (array of objects).
 技術樹結構：
 "技術樹": [
   {{
@@ -274,16 +289,6 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
     "技術2階": ["子技術1", "子技術2"]
   }}
 ]
-
-每個專利物件結構：
-{{
-  "專利公開公告號": "...",
-  "技術路徑": [
-    ["技術1階名稱", "技術2階名稱"]
-  ],
-  "應用領域": ["領域1", "領域2"],
-  "功效節點": ["功效A"]
-}}
 
 待分析清單：
 {patents_list}
@@ -295,14 +300,14 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
-                "temperature": 0.1, "max_tokens": 16000
+                "temperature": 0.1, "max_tokens": 8000
             }
             resp_data = analyzer.send_openrouter_request(payload, timeout=600.0)
             response_text = resp_data["choices"][0]["message"]["content"]
         else:
             resp = client.models.generate_content(
                 model="gemini-2.5-flash", contents=prompt,
-                config={"max_output_tokens": 16000, "temperature": 0.1, "response_mime_type": "application/json"}
+                config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
             )
             response_text = resp.text
 
@@ -330,28 +335,8 @@ async def upload_for_mindmap(file: UploadFile = File(...)):
         result = query_gemini_stage1(text_content, config, df=df)
         if not result: raise ValueError("AI processing failed.")
         
-        # Clean and validate Stage 1 results
-        patents = result.get("patents", [])
-        for p in patents:
-            if "專利公開公告號" not in p:
-                for k in ["公開公告號", "專利號", "patent_number"]:
-                    if k in p:
-                        p["專利公開公告號"] = p[k]
-                        break
-            p["專利公開公告號"] = str(p.get("專利公開公告號", "")).strip()
-            if "技術路徑" not in p or not p["技術路徑"]:
-                p["技術路徑"] = [["其他", "其他"]]
-            else:
-                new_paths = []
-                for path in p["技術路徑"]:
-                    if len(path) < 2:
-                        path = list(path) + ["其他"] * (2 - len(path))
-                    new_paths.append(path[:2])
-                p["技術路徑"] = new_paths
-            if "應用領域" not in p or not p["應用領域"]:
-                p["應用領域"] = ["其他"]
-            if "功效節點" not in p or not p["功效節點"]:
-                p["功效節點"] = ["其他"]
+        # Clean and validate Stage 1 results (no patents mapping at this stage)
+        result["patents"] = []
 
         temp_storage[file_id] = {
             "text": text_content,
@@ -377,8 +362,136 @@ async def reprocess_mindmap(config: MindMapConfig):
         result = query_gemini_stage1(text_content, config, df=df)
         if not result: raise ValueError("AI processing failed.")
         
-        patents = result.get("patents", [])
-        for p in patents:
+        result["patents"] = []
+
+        temp_storage[config.file_id]["stage1_result"] = result
+        
+        result["file_id"] = config.file_id
+        result["filename"] = temp_storage[config.file_id]["filename"]
+        result["is_stage1"] = True
+        return result
+    except Exception as e:
+        logger.error(f"Reprocess error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def execute_batch_mapping(df, taxonomy, provider, client=None):
+    pub_col_name = next((c for c in df.columns if "號" in str(c)), None)
+    col_app = next((c for c in df.columns if "應用領域" in str(c)), "")
+    col_eff = next((c for c in df.columns if "功效節點" in str(c)), "")
+    col_brief = next((c for c in df.columns if "AI技術簡述" in str(c)), "")
+    col_means = next((c for c in df.columns if "技術特徵手段" in str(c)), "")
+    col_effect = next((c for c in df.columns if "解決的技術問題或技術效益" in str(c)), "")
+
+    patents_data = []
+    for _, row in df.iterrows():
+        p_no = str(row.get(pub_col_name, "N/A")).strip()
+        bits = []
+        if col_app and str(row[col_app]).strip(): bits.append(f"原領域:{str(row[col_app]).strip()}")
+        if col_eff and str(row[col_eff]).strip(): bits.append(f"原功效:{str(row[col_eff]).strip()}")
+        
+        tech_elements = []
+        if col_brief and str(row[col_brief]).strip(): tech_elements.append(f"簡述:{str(row[col_brief]).strip()}")
+        if col_means and str(row[col_means]).strip(): tech_elements.append(f"手段:{str(row[col_means]).strip()}")
+        if col_effect and str(row[col_effect]).strip(): tech_elements.append(f"效益:{str(row[col_effect]).strip()}")
+        if tech_elements:
+            bits.append(f"技術特徵:{' '.join(tech_elements)}")
+            
+        patents_data.append((p_no, " | ".join(bits)))
+
+    mapped_patents = []
+    batch_size = 50
+    for i in range(0, len(patents_data), batch_size):
+        batch = patents_data[i:i+batch_size]
+        batch_text = ""
+        for p_no, details in batch:
+            batch_text += f"[{p_no}] {details}\n"
+
+        prompt = f"""你是專利分類專家。請將這批專利對應到以下已定義的分類目錄中。
+請嚴格遵守：專利的「技術路徑」中的技術1階與技術2階名稱、「應用領域」名稱、「功效節點」名稱，必須完全來自下方目錄，不可自行拼寫、創造或擴充。
+
+【分類目錄】：
+1. 應用領域：{json.dumps(taxonomy.get("應用領域", []), ensure_ascii=False)}
+2. 功效節點：{json.dumps(taxonomy.get("功效節點", []), ensure_ascii=False)}
+3. 技術樹：
+{json.dumps(taxonomy.get("技術樹", []), ensure_ascii=False)}
+
+【任務要求】：
+- 為每件專利指派一個或多個「應用領域」（必須是目錄中存在的）。
+- 為每件專利指派一個或多個「功效節點」（必須是目錄中存在的）。
+- 為每件專利指派一條或多條「技術路徑」，技術路徑必須是由目錄中存在的技術1階與其所屬的技術2階組成的完整陣列，如：["技術1階名稱", "技術2階名稱"]。
+
+【格式】ONLY output a JSON object with a single key "patents" (array of objects).
+例如：
+{{
+  "patents": [
+    {{
+      "專利公開公告號": "...",
+      "技術路徑": [
+        ["技術1階名稱", "技術2階名稱"]
+      ],
+      "應用領域": ["領域1"],
+      "功效節點": ["功效A"]
+    }}
+  ]
+}}
+
+待對應專利列表：
+{batch_text}
+"""
+        try:
+            response_text = ""
+            if provider == "openrouter":
+                payload = {
+                    "model": "google/gemini-2.5-flash",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.1, "max_tokens": 8000
+                }
+                resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
+                response_text = resp_data["choices"][0]["message"]["content"]
+            else:
+                resp = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt,
+                    config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
+                )
+                response_text = resp.text
+
+            parsed = robust_json_decode(response_text)
+            batch_mapped = parsed.get("patents", [])
+            mapped_patents.extend(batch_mapped)
+        except Exception as e:
+            logger.error(f"Batch mapping failed for batch indices {i} to {i+batch_size}: {e}")
+            for p_no, _ in batch:
+                mapped_patents.append({
+                    "專利公開公告號": p_no,
+                    "技術路徑": [["其他", "其他"]],
+                    "應用領域": ["其他"],
+                    "功效節點": ["其他"]
+                })
+    return mapped_patents
+
+class MapStage1Request(BaseModel):
+    file_id: str
+    taxonomy: dict
+
+@router.post("/api/mindmap/map_stage1")
+async def map_stage1(req: MapStage1Request):
+    try:
+        file_id = req.file_id
+        taxonomy = req.taxonomy
+        if file_id not in temp_storage:
+            raise HTTPException(status_code=400, detail="Session expired or invalid file_id.")
+        
+        df = temp_storage[file_id]["df"]
+        
+        import dotenv
+        dotenv.load_dotenv(override=True)
+        provider = os.environ.get("API_PROVIDER", "gemini").lower().strip().replace('"', '').replace("'", "")
+        client = get_genai_client() if provider != "openrouter" else None
+        
+        mapped_patents = execute_batch_mapping(df, taxonomy, provider, client=client)
+        
+        for p in mapped_patents:
             if "專利公開公告號" not in p:
                 for k in ["公開公告號", "專利號", "patent_number"]:
                     if k in p:
@@ -398,15 +511,17 @@ async def reprocess_mindmap(config: MindMapConfig):
                 p["應用領域"] = ["其他"]
             if "功效節點" not in p or not p["功效節點"]:
                 p["功效節點"] = ["其他"]
-
-        temp_storage[config.file_id]["stage1_result"] = result
+                
+        temp_storage[file_id]["stage1_taxonomy"] = taxonomy
+        temp_storage[file_id]["stage1_patents"] = mapped_patents
         
-        result["file_id"] = config.file_id
-        result["filename"] = temp_storage[config.file_id]["filename"]
-        result["is_stage1"] = True
-        return result
+        return {
+            "file_id": file_id,
+            "taxonomy": taxonomy,
+            "patents": mapped_patents
+        }
     except Exception as e:
-        logger.error(f"Reprocess error: {e}")
+        logger.error(f"Map Stage 1 error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/mindmap/generate_stage2")
@@ -462,15 +577,17 @@ async def generate_stage2(data: dict):
             if not p_nos:
                 continue
                 
-            batch_text = ""
-            for p_no in p_nos:
-                details = patent_lookup.get(p_no, {})
-                brief = details.get("AI技術簡述", "")
-                means = details.get("技術特徵手段", "")
-                effect = details.get("解決的技術問題或技術效益", "")
-                batch_text += f"[{p_no}] 簡述:{brief} | 手段:{means} | 效益:{effect}\n"
-                
-            prompt = f"""你是專利分類專家。現有以下專利被歸類於「技術1階：{t1}」->「技術2階：{t2}」下方。
+            # If the number of patents under this sub-tree is <= 40, do standard single call
+            if len(p_nos) <= 40:
+                batch_text = ""
+                for p_no in p_nos:
+                    details = patent_lookup.get(p_no, {})
+                    brief = details.get("AI技術簡述", "")
+                    means = details.get("技術特徵手段", "")
+                    effect = details.get("解決的技術問題或技術效益", "")
+                    batch_text += f"[{p_no}] 簡述:{brief} | 手段:{means} | 效益:{effect}\n"
+                    
+                prompt = f"""你是專利分類專家。現有以下專利被歸類於「技術1階：{t1}」->「技術2階：{t2}」下方。
 請針對這批專利，在「技術2階：{t2}」之下進一步細分出最匹配的「技術3階」子類別。
 並且為每件專利指派對應的「技術3階」子類別。
 
@@ -493,50 +610,181 @@ async def generate_stage2(data: dict):
 待分析專利清單：
 {batch_text}
 """
-            try:
-                response_text = ""
-                if provider == "openrouter":
-                    payload = {
-                        "model": "google/gemini-2.5-flash",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "response_format": {"type": "json_object"},
-                        "temperature": 0.1, "max_tokens": 16000
+                try:
+                    response_text = ""
+                    if provider == "openrouter":
+                        payload = {
+                            "model": "google/gemini-2.5-flash",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "response_format": {"type": "json_object"},
+                            "temperature": 0.1, "max_tokens": 16000
+                        }
+                        resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
+                        response_text = resp_data["choices"][0]["message"]["content"]
+                    else:
+                        resp = client.models.generate_content(
+                            model="gemini-2.5-flash", contents=prompt,
+                            config={"max_output_tokens": 16000, "temperature": 0.1, "response_mime_type": "application/json"}
+                        )
+                        response_text = resp.text
+                        
+                    parsed = robust_json_decode(response_text)
+                    t3_categories = parsed.get("技術3階類別", [])
+                    patent_t3_list = parsed.get("patents", [])
+                    
+                    patent_t3_map = {}
+                    for item in patent_t3_list:
+                        p_id = str(item.get("專利公開公告號", "")).strip()
+                        t3_vals = item.get("技術3階", [])
+                        if isinstance(t3_vals, str):
+                            t3_vals = [t3_vals]
+                        valid_t3s = [v for v in t3_vals if v in t3_categories]
+                        if not valid_t3s and t3_categories:
+                            valid_t3s = [t3_categories[0]]
+                        elif not valid_t3s:
+                            valid_t3s = ["其他"]
+                        patent_t3_map[p_id] = valid_t3s
+                        
+                    t3_results[(t1, t2)] = {
+                        "T3_categories": t3_categories,
+                        "patent_t3_map": patent_t3_map
                     }
-                    resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
-                    response_text = resp_data["choices"][0]["message"]["content"]
-                else:
-                    resp = client.models.generate_content(
-                        model="gemini-2.5-flash", contents=prompt,
-                        config={"max_output_tokens": 16000, "temperature": 0.1, "response_mime_type": "application/json"}
-                    )
-                    response_text = resp.text
+                except Exception as e:
+                    logger.error(f"Stage 2 Strategy B failed for path ({t1}, {t2}): {e}")
+                    t3_results[(t1, t2)] = {
+                        "T3_categories": ["其他"],
+                        "patent_t3_map": {p_no: ["其他"] for p_no in p_nos}
+                    }
+            else:
+                # If patents > 40, split into generation phase (first 40 patents) and batch mapping phase (40 patents per batch)
+                first_40_pnos = p_nos[:40]
+                batch_text_first_40 = ""
+                for p_no in first_40_pnos:
+                    details = patent_lookup.get(p_no, {})
+                    brief = details.get("AI技術簡述", "")
+                    means = details.get("技術特徵手段", "")
+                    effect = details.get("解決的技術問題或技術效益", "")
+                    batch_text_first_40 += f"[{p_no}] 簡述:{brief} | 手段:{means} | 效益:{effect}\n"
                     
-                parsed = robust_json_decode(response_text)
-                t3_categories = parsed.get("技術3階類別", [])
-                patent_t3_list = parsed.get("patents", [])
-                
+                prompt_gen = f"""你是專利分類專家。現有以下專利被歸類於「技術1階：{t1}」->「技術2階：{t2}」下方。
+請針對這批專利特徵，在「技術2階：{t2}」之下進一步細分出最匹配的「技術3階」子類別。
+
+【分類限制】：
+1. 技術3階：在此「技術2階：{t2}」子樹下，最多只能細分出 {config.tech3_count} 個「技術3階」子類別。
+2. 命名必須是具體、明確的技術特徵，且長度適中。
+
+【格式】ONLY output a JSON object with a single key: "技術3階類別" (array of strings).
+例如：
+{{
+  "技術3階類別": ["細分類別A", "細分類別B"]
+}}
+
+待分析專利清單：
+{batch_text_first_40}
+"""
+                try:
+                    response_text_gen = ""
+                    if provider == "openrouter":
+                        payload = {
+                            "model": "google/gemini-2.5-flash",
+                            "messages": [{"role": "user", "content": prompt_gen}],
+                            "response_format": {"type": "json_object"},
+                            "temperature": 0.1, "max_tokens": 8000
+                        }
+                        resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
+                        response_text_gen = resp_data["choices"][0]["message"]["content"]
+                    else:
+                        resp = client.models.generate_content(
+                            model="gemini-2.5-flash", contents=prompt_gen,
+                            config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
+                        )
+                        response_text_gen = resp.text
+                        
+                    parsed_gen = robust_json_decode(response_text_gen)
+                    t3_categories = parsed_gen.get("技術3階類別", [])
+                    if not t3_categories:
+                        t3_categories = ["其他"]
+                except Exception as e:
+                    logger.error(f"Stage 2 Strategy B Label Generation failed for path ({t1}, {t2}): {e}")
+                    t3_categories = ["其他"]
+                    
                 patent_t3_map = {}
-                for item in patent_t3_list:
-                    p_id = str(item.get("專利公開公告號", "")).strip()
-                    t3_vals = item.get("技術3階", [])
-                    if isinstance(t3_vals, str):
-                        t3_vals = [t3_vals]
-                    valid_t3s = [v for v in t3_vals if v in t3_categories]
-                    if not valid_t3s and t3_categories:
-                        valid_t3s = [t3_categories[0]]
-                    elif not valid_t3s:
-                        valid_t3s = ["其他"]
-                    patent_t3_map[p_id] = valid_t3s
-                    
+                batch_size = 40
+                for idx in range(0, len(p_nos), batch_size):
+                    batch_pnos = p_nos[idx:idx+batch_size]
+                    batch_text_map = ""
+                    for p_no in batch_pnos:
+                        details = patent_lookup.get(p_no, {})
+                        brief = details.get("AI技術簡述", "")
+                        means = details.get("技術特徵手段", "")
+                        effect = details.get("解決的技術問題或技術效益", "")
+                        batch_text_map += f"[{p_no}] 簡述:{brief} | 手段:{means} | 效益:{effect}\n"
+                        
+                    prompt_map = f"""你是專利分類專家。現有以下專利被歸類於「技術1階：{t1}」->「技術2階：{t2}」下方。
+請將這批專利指派對應到指定的「技術3階」子類別中（必須來自下方給定的類別清單，不可自行發明）。
+
+【技術3階子類別清單】：
+{json.dumps(t3_categories, ensure_ascii=False)}
+
+【格式】ONLY output a JSON object with a single key: "patents" (array of objects).
+例如：
+{{
+  "patents": [
+    {{
+      "專利公開公告號": "...",
+      "技術3階": ["細分類別A"]
+    }}
+  ]
+}}
+
+待對應專利清單：
+{batch_text_map}
+"""
+                    try:
+                        response_text_map = ""
+                        if provider == "openrouter":
+                            payload = {
+                                "model": "google/gemini-2.5-flash",
+                                "messages": [{"role": "user", "content": prompt_map}],
+                                "response_format": {"type": "json_object"},
+                                "temperature": 0.1, "max_tokens": 8000
+                            }
+                            resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
+                            response_text_map = resp_data["choices"][0]["message"]["content"]
+                        else:
+                            resp = client.models.generate_content(
+                                model="gemini-2.5-flash", contents=prompt_map,
+                                config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
+                            )
+                            response_text_map = resp.text
+                            
+                        parsed_map = robust_json_decode(response_text_map)
+                        patent_t3_list = parsed_map.get("patents", [])
+                        for item in patent_t3_list:
+                            p_id = str(item.get("專利公開公告號", "")).strip()
+                            t3_vals = item.get("技術3階", [])
+                            if isinstance(t3_vals, str):
+                                t3_vals = [t3_vals]
+                            valid_t3s = [v for v in t3_vals if v in t3_categories]
+                            if not valid_t3s and t3_categories:
+                                valid_t3s = [t3_categories[0]]
+                            elif not valid_t3s:
+                                valid_t3s = ["其他"]
+                            patent_t3_map[p_id] = valid_t3s
+                    except Exception as em:
+                        logger.error(f"Stage 2 Strategy B Batch Mapping failed for path ({t1}, {t2}) at index {idx}: {em}")
+                        for p_no in batch_pnos:
+                            if p_no not in patent_t3_map:
+                                patent_t3_map[p_no] = ["其他"]
+                                
+                # Fill in any missing patents that were not returned by the LLM
+                for p_no in p_nos:
+                    if p_no not in patent_t3_map:
+                        patent_t3_map[p_no] = [t3_categories[0]] if t3_categories else ["其他"]
+                        
                 t3_results[(t1, t2)] = {
                     "T3_categories": t3_categories,
                     "patent_t3_map": patent_t3_map
-                }
-            except Exception as e:
-                logger.error(f"Stage 2 Strategy B failed for path ({t1}, {t2}): {e}")
-                t3_results[(t1, t2)] = {
-                    "T3_categories": ["其他"],
-                    "patent_t3_map": {p_no: ["其他"] for p_no in p_nos}
                 }
                 
         # Mechanical merge

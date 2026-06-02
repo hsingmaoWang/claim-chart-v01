@@ -8,6 +8,7 @@ const MindMapTab = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [fileInfo, setFileInfo] = useState(null);
   const [treeData, setTreeData] = useState(null);
+  const [loaderMessage, setLoaderMessage] = useState('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
 
   const [config, setConfig] = useState({
     app_area_count: '3~7',
@@ -39,6 +40,7 @@ const MindMapTab = () => {
     if (!file) return;
 
     setAppState('processing');
+    setLoaderMessage('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
     setErrorMessage('');
 
     const formData = new FormData();
@@ -71,8 +73,22 @@ const MindMapTab = () => {
           技術樹: data.技術樹 || []
         };
         setStage1Taxonomy(taxonomy);
-        setStage1Patents(data.patents || []);
-        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: data.patents || [] })));
+        
+        // Immediately fetch the initial patent mappings (Stage 1 batch mapping)
+        setLoaderMessage('AI is mapping patents to the generated taxonomy tree (Stage 1 Mapping)...');
+        const mapResponse = await fetch('/api/mindmap/map_stage1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: data.file_id, taxonomy: taxonomy })
+        });
+        
+        if (!mapResponse.ok) {
+          throw new Error('Failed to perform initial patent mapping.');
+        }
+        
+        const mappedData = await mapResponse.json();
+        setStage1Patents(mappedData.patents || []);
+        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: mappedData.patents || [] })));
         setAppState('review_stage1');
       } else {
         setAppState('tree');
@@ -111,6 +127,7 @@ const MindMapTab = () => {
   const handleReprocess = async () => {
     if (!fileInfo) return;
     setAppState('processing');
+    setLoaderMessage('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
     setErrorMessage('');
 
     try {
@@ -139,8 +156,21 @@ const MindMapTab = () => {
           技術樹: data.技術樹 || []
         };
         setStage1Taxonomy(taxonomy);
-        setStage1Patents(data.patents || []);
-        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: data.patents || [] })));
+
+        setLoaderMessage('AI is re-mapping patents to the reprocessed taxonomy tree (Stage 1 Mapping)...');
+        const mapResponse = await fetch('/api/mindmap/map_stage1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: fileInfo.file_id, taxonomy: taxonomy })
+        });
+        
+        if (!mapResponse.ok) {
+          throw new Error('Failed to perform patent mapping after reprocess.');
+        }
+        
+        const mappedData = await mapResponse.json();
+        setStage1Patents(mappedData.patents || []);
+        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: mappedData.patents || [] })));
         setAppState('review_stage1');
       } else {
         setAppState('tree');
@@ -155,16 +185,36 @@ const MindMapTab = () => {
   const handleGenerateStage2 = async () => {
     if (!fileInfo) return;
     setAppState('processing_stage2');
+    setLoaderMessage('AI is mapping patents to the calibrated taxonomy tree (Stage 1 Mapping)...');
     setErrorMessage('');
 
     try {
+      // Step 1: Call map_stage1 with the user-calibrated taxonomy
+      const mapResponse = await fetch('/api/mindmap/map_stage1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_id: fileInfo.file_id,
+          taxonomy: stage1Taxonomy
+        })
+      });
+
+      if (!mapResponse.ok) {
+        throw new Error('Failed to map patents to the calibrated taxonomy tree.');
+      }
+      const mappedData = await mapResponse.json();
+      const finalMappedPatents = mappedData.patents || [];
+      setStage1Patents(finalMappedPatents);
+
+      // Step 2: Call generate_stage2 with the final mapped patents
+      setLoaderMessage('AI is subdividing patents and generating technical level 3 (Stage 2)...');
       const response = await fetch('/api/mindmap/generate_stage2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           file_id: fileInfo.file_id,
           taxonomy: stage1Taxonomy,
-          patents: stage1Patents,
+          patents: finalMappedPatents,
           config: config
         })
       });
@@ -416,7 +466,7 @@ const MindMapTab = () => {
       {appState === 'processing' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="processing-section glass-panel" style={{ padding: '5rem 3rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', textAlign: 'center', width: '100%', maxWidth: '600px' }}>
-            <Loader statusMessage="AI is analyzing and modeling patent taxonomy tree (Stage 1)..." />
+            <Loader statusMessage={loaderMessage} />
           </div>
         </div>
       )}
@@ -424,7 +474,7 @@ const MindMapTab = () => {
       {appState === 'processing_stage2' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="processing-section glass-panel" style={{ padding: '5rem 3rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', textAlign: 'center', width: '100%', maxWidth: '600px' }}>
-            <Loader statusMessage="AI is subdividing patents and generating technical level 3 (Stage 2 Strategy B)..." />
+            <Loader statusMessage={loaderMessage} />
           </div>
         </div>
       )}
