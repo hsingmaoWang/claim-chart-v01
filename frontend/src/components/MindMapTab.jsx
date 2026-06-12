@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Loader from './Loader';
 import MindMapTree from './MindMapTree';
-import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle } from 'lucide-react';
+import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X } from 'lucide-react';
 
 const MindMapTab = () => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
@@ -34,7 +34,19 @@ const MindMapTab = () => {
   const [stage1Taxonomy, setStage1Taxonomy] = useState(null);
   const [stage1Patents, setStage1Patents] = useState([]);
   const [stage1Backup, setStage1Backup] = useState(null); // to allow resets
-  const [patentSearch, setPatentSearch] = useState('');
+
+  // Definition Modal States
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('view'); // 'view', 'edit', 'add'
+  const [modalData, setModalData] = useState({
+    type: '', // '應用領域', '功效節點', '技術1階', '技術2階'
+    index: -1,
+    parentIndex: -1,
+    name: '',
+    definition: ''
+  });
+  const [tempName, setTempName] = useState('');
+  const [tempDef, setTempDef] = useState('');
 
   const processFile = async (file) => {
     if (!file) return;
@@ -70,25 +82,12 @@ const MindMapTab = () => {
           summary_title: data.summary_title || '專利分類心智圖',
           應用領域: data.應用領域 || [],
           功效節點: data.功效節點 || [],
-          技術樹: data.技術樹 || []
+          技術樹: data.技術樹 || [],
+          定義說明: data.定義說明 || {}
         };
         setStage1Taxonomy(taxonomy);
-        
-        // Immediately fetch the initial patent mappings (Stage 1 batch mapping)
-        setLoaderMessage('AI is mapping patents to the generated taxonomy tree (Stage 1 Mapping)...');
-        const mapResponse = await fetch('/api/mindmap/map_stage1', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_id: data.file_id, taxonomy: taxonomy })
-        });
-        
-        if (!mapResponse.ok) {
-          throw new Error('Failed to perform initial patent mapping.');
-        }
-        
-        const mappedData = await mapResponse.json();
-        setStage1Patents(mappedData.patents || []);
-        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: mappedData.patents || [] })));
+        setStage1Patents([]);
+        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: [] })));
         setAppState('review_stage1');
       } else {
         setAppState('tree');
@@ -153,24 +152,12 @@ const MindMapTab = () => {
           summary_title: data.summary_title || '專利分類心智圖',
           應用領域: data.應用領域 || [],
           功效節點: data.功效節點 || [],
-          技術樹: data.技術樹 || []
+          技術樹: data.技術樹 || [],
+          定義說明: data.定義說明 || {}
         };
         setStage1Taxonomy(taxonomy);
-
-        setLoaderMessage('AI is re-mapping patents to the reprocessed taxonomy tree (Stage 1 Mapping)...');
-        const mapResponse = await fetch('/api/mindmap/map_stage1', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_id: fileInfo.file_id, taxonomy: taxonomy })
-        });
-        
-        if (!mapResponse.ok) {
-          throw new Error('Failed to perform patent mapping after reprocess.');
-        }
-        
-        const mappedData = await mapResponse.json();
-        setStage1Patents(mappedData.patents || []);
-        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: mappedData.patents || [] })));
+        setStage1Patents([]);
+        setStage1Backup(JSON.parse(JSON.stringify({ taxonomy, patents: [] })));
         setAppState('review_stage1');
       } else {
         setAppState('tree');
@@ -185,11 +172,11 @@ const MindMapTab = () => {
   const handleGenerateStage2 = async () => {
     if (!fileInfo) return;
     setAppState('processing_stage2');
-    setLoaderMessage('AI is mapping patents to the calibrated taxonomy tree (Stage 1 Mapping)...');
+    setLoaderMessage('AI 正在啟動專利分類與映射任務 (已完成 0%)...');
     setErrorMessage('');
 
     try {
-      // Step 1: Call map_stage1 with the user-calibrated taxonomy
+      // Step 1: 呼叫 map_stage1 啟動背景任務
       const mapResponse = await fetch('/api/mindmap/map_stage1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,49 +187,72 @@ const MindMapTab = () => {
       });
 
       if (!mapResponse.ok) {
-        throw new Error('Failed to map patents to the calibrated taxonomy tree.');
+        throw new Error('無法啟動專利分類背景任務。');
       }
-      const mappedData = await mapResponse.json();
-      const finalMappedPatents = mappedData.patents || [];
-      setStage1Patents(finalMappedPatents);
+      
+      const initData = await mapResponse.json();
+      const taskId = initData.task_id;
 
-      // Step 2: Call generate_stage2 with the final mapped patents
-      setLoaderMessage('AI is subdividing patents and generating technical level 3 (Stage 2)...');
-      const response = await fetch('/api/mindmap/generate_stage2', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_id: fileInfo.file_id,
-          taxonomy: stage1Taxonomy,
-          patents: finalMappedPatents,
-          config: config
-        })
-      });
-
-      if (!response.ok) {
-        let errMessage = `Server error: ${response.status}`;
+      // Step 2: 開始每 2 秒輪詢一次任務狀態
+      const pollInterval = setInterval(async () => {
         try {
-          const errData = await response.json();
-          if (errData && errData.detail) errMessage = errData.detail;
-        } catch (e) { }
-        throw new Error(errMessage);
-      }
-      const data = await response.json();
-      setTreeData(data);
-      setAppState('tree');
+          const statusResp = await fetch(`/api/mindmap/task_status?task_id=${taskId}`);
+          if (!statusResp.ok) return;
+          const statusData = await statusResp.json();
+          
+          if (statusData.status === 'processing') {
+            const pct = statusData.total_count > 0 
+              ? Math.min(100, Math.round((statusData.completed_count / statusData.total_count) * 100))
+              : 0;
+            const stageLabel = statusData.stage === 2
+              ? `階段 2/2 技術3階細分映射`
+              : `階段 1/2 全域分類標籤映射`;
+            setLoaderMessage(`AI 正在進行${stageLabel} (已完成 ${pct}%)...`);
+          } else if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            
+            // 任務完成！向後端拿取最終結果
+            setLoaderMessage('正在載入最終心智圖結構...');
+            const finalResp = await fetch('/api/mindmap/generate_stage2', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ file_id: fileInfo.file_id })
+            });
+            
+            if (!finalResp.ok) throw new Error('無法載入最終專利映射結果。');
+            
+            const finalData = await finalResp.json();
+            setTreeData(finalData);
+            setAppState('tree');
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            setErrorMessage(`背景任務執行失敗: ${statusData.error}`);
+            setAppState('review_stage1');
+          }
+        } catch (pollErr) {
+          console.error("Polling error:", pollErr);
+        }
+      }, 2000);
+
     } catch (err) {
       console.error(err);
-      setErrorMessage(err.message || 'Error occurred during Stage 2 processing.');
+      setErrorMessage(err.message || '執行階段 2 時發生錯誤。');
       setAppState('review_stage1');
     }
   };
 
   const handleExportExcel = async () => {
     try {
+      // Merge stage1Taxonomy definitions or treeData for complete export
+      const payload = {
+        ...treeData,
+        stage1_taxonomy: stage1Taxonomy
+      };
+      
       const response = await fetch('/api/mindmap/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(treeData)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) throw new Error('Failed to export Excel');
@@ -285,18 +295,22 @@ const MindMapTab = () => {
 
   // --- Category Synchronization Helper Functions ---
 
-  const addDomain = (name) => {
+  const addDomain = (name, def = '') => {
     if (stage1Taxonomy.應用領域.includes(name)) return;
+    const updatedDefs = { ...stage1Taxonomy.定義說明, [name]: def };
     setStage1Taxonomy({
       ...stage1Taxonomy,
-      應用領域: [...stage1Taxonomy.應用領域, name]
+      應用領域: [...stage1Taxonomy.應用領域, name],
+      定義說明: updatedDefs
     });
   };
 
   const deleteDomain = (index) => {
     const name = stage1Taxonomy.應用領域[index];
     const filtered = stage1Taxonomy.應用領域.filter((_, i) => i !== index);
-    setStage1Taxonomy({ ...stage1Taxonomy, 應用領域: filtered });
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    delete updatedDefs[name];
+    setStage1Taxonomy({ ...stage1Taxonomy, 應用領域: filtered, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => {
       const remaining = p.應用領域.filter(d => d !== name);
       return {
@@ -308,27 +322,39 @@ const MindMapTab = () => {
 
   const renameDomain = (index, newName) => {
     const oldName = stage1Taxonomy.應用領域[index];
+    if (oldName === newName) return;
     const updated = [...stage1Taxonomy.應用領域];
     updated[index] = newName;
-    setStage1Taxonomy({ ...stage1Taxonomy, 應用領域: updated });
+
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    if (updatedDefs[oldName] !== undefined) {
+      updatedDefs[newName] = updatedDefs[oldName];
+      delete updatedDefs[oldName];
+    }
+
+    setStage1Taxonomy({ ...stage1Taxonomy, 應用領域: updated, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => ({
       ...p,
       應用領域: p.應用領域.map(d => d === oldName ? newName : d)
     })));
   };
 
-  const addEfficacy = (name) => {
+  const addEfficacy = (name, def = '') => {
     if (stage1Taxonomy.功效節點.includes(name)) return;
+    const updatedDefs = { ...stage1Taxonomy.定義說明, [name]: def };
     setStage1Taxonomy({
       ...stage1Taxonomy,
-      功效節點: [...stage1Taxonomy.功效節點, name]
+      功效節點: [...stage1Taxonomy.功效節點, name],
+      定義說明: updatedDefs
     });
   };
 
   const deleteEfficacy = (index) => {
     const name = stage1Taxonomy.功效節點[index];
     const filtered = stage1Taxonomy.功效節點.filter((_, i) => i !== index);
-    setStage1Taxonomy({ ...stage1Taxonomy, 功效節點: filtered });
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    delete updatedDefs[name];
+    setStage1Taxonomy({ ...stage1Taxonomy, 功效節點: filtered, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => {
       const remaining = p.功效節點.filter(e => e !== name);
       return {
@@ -340,27 +366,44 @@ const MindMapTab = () => {
 
   const renameEfficacy = (index, newName) => {
     const oldName = stage1Taxonomy.功效節點[index];
+    if (oldName === newName) return;
     const updated = [...stage1Taxonomy.功效節點];
     updated[index] = newName;
-    setStage1Taxonomy({ ...stage1Taxonomy, 功效節點: updated });
+
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    if (updatedDefs[oldName] !== undefined) {
+      updatedDefs[newName] = updatedDefs[oldName];
+      delete updatedDefs[oldName];
+    }
+
+    setStage1Taxonomy({ ...stage1Taxonomy, 功效節點: updated, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => ({
       ...p,
       功效節點: p.功效節點.map(e => e === oldName ? newName : e)
     })));
   };
 
-  const addT1 = (name) => {
+  const addT1 = (name, def = '') => {
     if (stage1Taxonomy.技術樹.some(item => item.技術1階 === name)) return;
+    const updatedDefs = { ...stage1Taxonomy.定義說明, [name]: def };
     setStage1Taxonomy({
       ...stage1Taxonomy,
-      技術樹: [...stage1Taxonomy.技術樹, { 技術1階: name, 技術2階: [] }]
+      技術樹: [...stage1Taxonomy.技術樹, { 技術1階: name, 技術2階: [] }],
+      定義說明: updatedDefs
     });
   };
 
   const deleteT1 = (t1Index) => {
     const oldName = stage1Taxonomy.技術樹[t1Index].技術1階;
     const updated = stage1Taxonomy.技術樹.filter((_, i) => i !== t1Index);
-    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated });
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    delete updatedDefs[oldName];
+    // Also clean up nested T2 definitions
+    stage1Taxonomy.技術樹[t1Index].技術2階.forEach(t2Name => {
+      delete updatedDefs[t2Name];
+    });
+
+    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => {
       const remainingPaths = p.技術路徑.filter(path => path[0] !== oldName);
       return {
@@ -372,30 +415,29 @@ const MindMapTab = () => {
 
   const renameT1 = (t1Index, newName) => {
     const oldName = stage1Taxonomy.技術樹[t1Index].技術1階;
+    if (oldName === newName) return;
     const updated = [...stage1Taxonomy.技術樹];
     updated[t1Index].技術1階 = newName;
-    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated });
+
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    if (updatedDefs[oldName] !== undefined) {
+      updatedDefs[newName] = updatedDefs[oldName];
+      delete updatedDefs[oldName];
+    }
+
+    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => ({
       ...p,
       技術路徑: p.技術路徑.map(path => path[0] === oldName ? [newName, path[1]] : path)
     })));
   };
 
-  const addT2 = (t1Index, name) => {
+  const addT2 = (t1Index, name, def = '') => {
     if (stage1Taxonomy.技術樹[t1Index].技術2階.includes(name)) return;
     const updated = [...stage1Taxonomy.技術樹];
     updated[t1Index].技術2階 = [...updated[t1Index].技術2階, name];
-    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated });
-  };
-
-  const handleAppendT1 = () => {
-    const name = window.prompt('請輸入新的技術 1 階類別名稱：');
-    if (name && name.trim()) addT1(name.trim());
-  };
-
-  const handleAppendT2 = (t1Index) => {
-    const name = window.prompt(`請輸入「${stage1Taxonomy.技術樹[t1Index].技術1階}」底下新的技術 2 階名稱：`);
-    if (name && name.trim()) addT2(t1Index, name.trim());
+    const updatedDefs = { ...stage1Taxonomy.定義說明, [name]: def };
+    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated, 定義說明: updatedDefs });
   };
 
   const deleteT2 = (t1Index, t2Index) => {
@@ -403,7 +445,10 @@ const MindMapTab = () => {
     const oldT2Name = stage1Taxonomy.技術樹[t1Index].技術2階[t2Index];
     const updated = [...stage1Taxonomy.技術樹];
     updated[t1Index].技術2階 = updated[t1Index].技術2階.filter((_, i) => i !== t2Index);
-    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated });
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    delete updatedDefs[oldT2Name];
+
+    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => {
       const remainingPaths = p.技術路徑.filter(path => !(path[0] === t1Name && path[1] === oldT2Name));
       return {
@@ -416,18 +461,95 @@ const MindMapTab = () => {
   const renameT2 = (t1Index, t2Index, newName) => {
     const t1Name = stage1Taxonomy.技術樹[t1Index].技術1階;
     const oldT2Name = stage1Taxonomy.技術樹[t1Index].技術2階[t2Index];
+    if (oldT2Name === newName) return;
     const updated = [...stage1Taxonomy.技術樹];
     updated[t1Index].技術2階[t2Index] = newName;
-    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated });
+
+    const updatedDefs = { ...stage1Taxonomy.定義說明 };
+    if (updatedDefs[oldT2Name] !== undefined) {
+      updatedDefs[newName] = updatedDefs[oldT2Name];
+      delete updatedDefs[oldT2Name];
+    }
+
+    setStage1Taxonomy({ ...stage1Taxonomy, 技術樹: updated, 定義說明: updatedDefs });
     setStage1Patents(stage1Patents.map(p => ({
       ...p,
       技術路徑: p.技術路徑.map(path => (path[0] === t1Name && path[1] === oldT2Name) ? [t1Name, newName] : path)
     })));
   };
 
-  const filteredPatents = stage1Patents.filter(p =>
-    p.專利公開公告號.toLowerCase().includes(patentSearch.toLowerCase())
-  );
+  // --- Modal Open Helper Functions ---
+  const openViewModal = (type, name) => {
+    const def = stage1Taxonomy.定義說明[name] || '';
+    setModalData({ type, index: -1, parentIndex: -1, name, definition: def });
+    setTempName(name);
+    setTempDef(def);
+    setModalMode('view');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (type, name, index, parentIndex = -1) => {
+    const def = stage1Taxonomy.定義說明[name] || '';
+    setModalData({ type, index, parentIndex, name, definition: def });
+    setTempName(name);
+    setTempDef(def);
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  const openAddModal = (type, parentIndex = -1) => {
+    setModalData({ type, index: -1, parentIndex, name: '', definition: '' });
+    setTempName('');
+    setTempDef('');
+    setModalMode('add');
+    setIsModalOpen(true);
+  };
+
+  const handleSaveModal = () => {
+    const cleanName = tempName.trim();
+    const cleanDef = tempDef.trim();
+    if (!cleanName) return;
+
+    if (modalMode === 'add') {
+      if (modalData.type === '應用領域') {
+        addDomain(cleanName, cleanDef);
+      } else if (modalData.type === '功效節點') {
+        addEfficacy(cleanName, cleanDef);
+      } else if (modalData.type === '技術1階') {
+        addT1(cleanName, cleanDef);
+      } else if (modalData.type === '技術2階') {
+        addT2(modalData.parentIndex, cleanName, cleanDef);
+      }
+    } else if (modalMode === 'edit') {
+      if (modalData.type === '應用領域') {
+        renameDomain(modalData.index, cleanName);
+        // update definition
+        setStage1Taxonomy(prev => ({
+          ...prev,
+          定義說明: { ...prev.定義說明, [cleanName]: cleanDef }
+        }));
+      } else if (modalData.type === '功效節點') {
+        renameEfficacy(modalData.index, cleanName);
+        setStage1Taxonomy(prev => ({
+          ...prev,
+          定義說明: { ...prev.定義說明, [cleanName]: cleanDef }
+        }));
+      } else if (modalData.type === '技術1階') {
+        renameT1(modalData.index, cleanName);
+        setStage1Taxonomy(prev => ({
+          ...prev,
+          定義說明: { ...prev.定義說明, [cleanName]: cleanDef }
+        }));
+      } else if (modalData.type === '技術2階') {
+        renameT2(modalData.parentIndex, modalData.index, cleanName);
+        setStage1Taxonomy(prev => ({
+          ...prev,
+          定義說明: { ...prev.定義說明, [cleanName]: cleanDef }
+        }));
+      }
+    }
+    setIsModalOpen(false);
+  };
 
   return (
     <div className="mindmap-container animate-fade-in" style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
@@ -520,8 +642,8 @@ const MindMapTab = () => {
             </div>
           </div>
 
-          {/* Grid Columns */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr 1.1fr', gap: '1rem', flex: 1, overflow: 'hidden', height: '100%' }}>
+          {/* Grid Columns - Two Columns instead of Three */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '1rem', flex: 1, overflow: 'hidden', height: '100%' }}>
 
             {/* Column 1: Domain & Efficacy */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', overflow: 'hidden' }}>
@@ -542,6 +664,20 @@ const MindMapTab = () => {
                         style={{ flex: 1, padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.4)', color: 'var(--color-text)', fontSize: '0.9rem' }}
                       />
                       <button
+                        onClick={() => openViewModal('應用領域', domain)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="查看/編輯定義"
+                      >
+                        <HelpCircle size={16} />
+                      </button>
+                      <button
+                        onClick={() => openEditModal('應用領域', domain, index)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="詳細修改"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
                         onClick={() => deleteDomain(index)}
                         style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除"
@@ -552,7 +688,7 @@ const MindMapTab = () => {
                   ))}
                 </div>
                 <button
-                  onClick={() => addDomain(`新領域_${stage1Taxonomy.應用領域.length + 1}`)}
+                  onClick={() => openAddModal('應用領域')}
                   className="btn-secondary"
                   style={{ padding: '0.4rem 1rem', borderRadius: '0.4rem', width: '100%', fontSize: '0.85rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem' }}
                 >
@@ -577,6 +713,20 @@ const MindMapTab = () => {
                         style={{ flex: 1, padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.4)', color: 'var(--color-text)', fontSize: '0.9rem' }}
                       />
                       <button
+                        onClick={() => openViewModal('功效節點', eff)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="查看/編輯定義"
+                      >
+                        <HelpCircle size={16} />
+                      </button>
+                      <button
+                        onClick={() => openEditModal('功效節點', eff, index)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="詳細修改"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
                         onClick={() => deleteEfficacy(index)}
                         style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除"
@@ -587,7 +737,7 @@ const MindMapTab = () => {
                   ))}
                 </div>
                 <button
-                  onClick={() => addEfficacy(`新功效_${stage1Taxonomy.功效節點.length + 1}`)}
+                  onClick={() => openAddModal('功效節點')}
                   className="btn-secondary"
                   style={{ padding: '0.4rem 1rem', borderRadius: '0.4rem', width: '100%', fontSize: '0.85rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem' }}
                 >
@@ -616,6 +766,20 @@ const MindMapTab = () => {
                         style={{ flex: 1, padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.5)', color: 'var(--color-text)', fontSize: '0.9rem', fontWeight: 'bold' }}
                       />
                       <button
+                        onClick={() => openViewModal('技術1階', t1Item.技術1階)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="定義"
+                      >
+                        <HelpCircle size={16} />
+                      </button>
+                      <button
+                        onClick={() => openEditModal('技術1階', t1Item.技術1階, t1Idx)}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        title="詳細修改"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
                         onClick={() => deleteT1(t1Idx)}
                         style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除整條分支"
@@ -635,6 +799,20 @@ const MindMapTab = () => {
                             style={{ flex: 1, padding: '0.3rem 0.5rem', borderRadius: '0.3rem', border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.4)', color: 'var(--color-text)', fontSize: '0.85rem' }}
                           />
                           <button
+                            onClick={() => openViewModal('技術2階', t2Item)}
+                            style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                            title="定義"
+                          >
+                            <HelpCircle size={14} />
+                          </button>
+                          <button
+                            onClick={() => openEditModal('技術2階', t2Item, t2Idx, t1Idx)}
+                            style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.1rem' }}
+                            title="詳細修改"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
                             onClick={() => deleteT2(t1Idx, t2Idx)}
                             style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.1rem' }}
                             title="刪除"
@@ -644,7 +822,7 @@ const MindMapTab = () => {
                         </div>
                       ))}
                       <button
-                        onClick={() => handleAppendT2(t1Idx)}
+                        onClick={() => openAddModal('技術2階', t1Idx)}
                         className="btn-secondary"
                         style={{ padding: '0.25rem 0.6rem', borderRadius: '0.3rem', alignSelf: 'flex-start', fontSize: '0.75rem', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
                       >
@@ -655,71 +833,12 @@ const MindMapTab = () => {
                 ))}
               </div>
               <button
-                onClick={handleAppendT1}
+                onClick={() => openAddModal('技術1階')}
                 className="btn-secondary"
                 style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', width: '100%', fontSize: '0.9rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem' }}
               >
                 <Plus size={16} /> 新增技術 1 階類別
               </button>
-            </div>
-
-            {/* Column 3: Patents Preview */}
-            <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>🔍 4. 專利映射狀態預覽</span>
-                <span style={{ fontSize: '0.75rem', background: 'var(--color-primary-glow)', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
-                  {stage1Patents.length} 件
-                </span>
-              </h3>
-
-              {/* Search input */}
-              <div style={{ position: 'relative', marginBottom: '1rem' }}>
-                <Search size={16} color="var(--color-text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  placeholder="搜尋公開號..."
-                  value={patentSearch}
-                  onChange={(e) => setPatentSearch(e.target.value)}
-                  style={{ width: '100%', padding: '0.4rem 0.6rem 0.4rem 2rem', borderRadius: '0.5rem', border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.4)', color: 'var(--color-text)', outline: 'none', fontSize: '0.85rem' }}
-                />
-              </div>
-
-              {/* Patent list */}
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {filteredPatents.map((pat, idx) => (
-                  <div key={idx} style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(255, 255, 255, 0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text)', marginBottom: '0.4rem' }}>
-                      🔖 {pat.專利公開公告號}
-                    </div>
-                    {/* Path tags */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.75rem' }}>
-                      <div>
-                        <span style={{ color: 'var(--color-text-muted)', fontWeight: 'bold' }}>技術: </span>
-                        {pat.技術路徑 && pat.技術路徑.map((p, pIdx) => (
-                          <div key={pIdx} style={{ display: 'inline-block', background: 'rgba(8,145,178,0.15)', color: '#0891b2', padding: '1px 6px', borderRadius: '0.25rem', margin: '1px 2px' }}>
-                            {p[0]} &gt; {p[1]}
-                          </div>
-                        ))}
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--color-text-muted)', fontWeight: 'bold' }}>領域: </span>
-                        {pat.應用領域 && pat.應用領域.map((d, dIdx) => (
-                          <span key={dIdx} style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '1px 6px', borderRadius: '0.25rem', margin: '1px 2px', display: 'inline-block' }}>
-                            {d}
-                          </span>
-                        ))}
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--color-text-muted)', fontWeight: 'bold' }}>功效: </span>
-                        {pat.功效節點 && pat.功效節點.map((e, eIdx) => (
-                          <span key={eIdx} style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706', padding: '1px 6px', borderRadius: '0.25rem', margin: '1px 2px', display: 'inline-block' }}>
-                            {e}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
           </div>
@@ -791,6 +910,167 @@ const MindMapTab = () => {
             >
               Start New
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- Definition Modal --- */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div className="glass-panel" style={{
+            width: '90%',
+            maxWidth: '500px',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '1.25rem',
+            padding: '2rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem',
+            position: 'relative'
+          }}>
+            <button 
+              onClick={() => setIsModalOpen(false)}
+              style={{
+                position: 'absolute',
+                top: '1.25rem',
+                right: '1.25rem',
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--color-text-muted)',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {modalMode === 'view' ? '📖 ' : modalMode === 'edit' ? '✍️ ' : '➕ '}
+              {modalMode === 'view' ? '定義說明' : modalMode === 'edit' ? '修改分類標籤' : `新增${modalData.type}`}
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                  分類標籤名稱
+                </label>
+                {modalMode === 'view' ? (
+                  <div style={{ padding: '0.6rem 0.8rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.2)', border: '1px solid var(--color-border)', fontSize: '0.95rem', fontWeight: '500' }}>
+                    {modalData.name}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    placeholder="請輸入名稱"
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.8rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid var(--color-border)',
+                      background: 'rgba(255,255,255,0.4)',
+                      color: 'var(--color-text)',
+                      outline: 'none',
+                      fontSize: '0.95rem'
+                    }}
+                  />
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                  定義說明 (約 60 字繁中)
+                </label>
+                {modalMode === 'view' ? (
+                  <div style={{ 
+                    padding: '0.8rem 1rem', 
+                    borderRadius: '0.5rem', 
+                    background: 'rgba(255,255,255,0.2)', 
+                    border: '1px solid var(--color-border)', 
+                    fontSize: '0.95rem', 
+                    lineHeight: '1.6', 
+                    minHeight: '100px',
+                    whiteSpace: 'pre-wrap'
+                  }}>
+                    {tempDef || '尚無定義說明。'}
+                  </div>
+                ) : (
+                  <textarea
+                    rows={4}
+                    value={tempDef}
+                    onChange={(e) => setTempDef(e.target.value)}
+                    placeholder="請輸入該分類標籤的繁體中文定義說明 (約 60 字)..."
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.8rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid var(--color-border)',
+                      background: 'rgba(255,255,255,0.4)',
+                      color: 'var(--color-text)',
+                      outline: 'none',
+                      fontSize: '0.95rem',
+                      resize: 'none',
+                      lineHeight: '1.5'
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
+              {modalMode === 'view' ? (
+                <>
+                  <button 
+                    onClick={() => {
+                      setModalMode('edit');
+                    }}
+                    className="btn-secondary"
+                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                  >
+                    編輯
+                  </button>
+                  <button 
+                    onClick={() => setIsModalOpen(false)}
+                    className="btn-primary"
+                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                  >
+                    關閉
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setIsModalOpen(false)}
+                    className="btn-secondary"
+                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                  >
+                    取消
+                  </button>
+                  <button 
+                    onClick={handleSaveModal}
+                    className="btn-primary"
+                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                  >
+                    儲存
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
