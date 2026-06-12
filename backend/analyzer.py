@@ -5,11 +5,107 @@ import requests
 import ssl
 import httpx
 import truststore
+import re
+import json_repair
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 load_dotenv()
+
+# --- Pydantic Schemas for Structured Outputs ---
+
+class IndependentClaims(BaseModel):
+    claims: list[str]
+
+class ClaimElement(BaseModel):
+    text: str
+    numeral: str
+
+class ClaimAnalysis(BaseModel):
+    best_figure_id: str
+    elements: list[ClaimElement]
+
+# --- Shared Helpers for JSON & LLM Schema ---
+
+def robust_json_decode(text: str):
+    """
+    優化後的自癒 JSON 解析器，支援修復受損的 JSON 格式與轉義字元
+    """
+    if not text:
+        return {}
+    text = text.strip()
+    
+    # 移除 Markdown Codeblock 標記
+    text = re.sub(r'^```json\s*', '', text)
+    text = re.sub(r'\s*```$', '', text)
+    
+    # 清除控制字元（Unterminated string 的主要元兇）
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+    
+    # 1. 嘗試標準直接解析
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. 使用 json_repair 進行修復並載入
+    try:
+        repaired_data = json_repair.loads(text)
+        if repaired_data is not None:
+            return repaired_data
+    except Exception:
+        pass
+
+    # 3. 備援方案：尋找外層第一個 { 和最後一個 }（針對夾雜無關說明的生成）
+    start_idx = text.find('{')
+    end_idx = text.rfind('}')
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        try:
+            candidate = text[start_idx:end_idx+1]
+            return json_repair.loads(candidate)
+        except Exception:
+            pass
+
+    # 4. 針對陣列的備援方案（有些 LLM 回應最外層是 [ ... ]）
+    start_arr_idx = text.find('[')
+    end_arr_idx = text.rfind(']')
+    if start_arr_idx != -1 and end_arr_idx != -1 and end_arr_idx > start_arr_idx:
+        try:
+            candidate = text[start_arr_idx:end_arr_idx+1]
+            return json_repair.loads(candidate)
+        except Exception:
+            pass
+
+    raise ValueError("Could not recover valid JSON from model response.")
+
+def configure_response_format(response_schema, provider: str):
+    """
+    為 Gemini Direct 或 OpenRouter 提供 Structured Output / JSON Schema 參數配置
+    """
+    if not response_schema:
+        if provider == "openrouter":
+            return {"response_format": {"type": "json_object"}}
+        else:
+            return {"response_mime_type": "application/json"}
+
+    if provider == "openrouter":
+        return {
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_schema.__name__,
+                    "strict": True,
+                    "schema": response_schema.model_json_schema()
+                }
+            }
+        }
+    else:
+        return {
+            "response_mime_type": "application/json",
+            "response_schema": response_schema
+        }
 
 def send_openrouter_request(payload: dict, timeout: float = 60.0) -> dict:
     """
@@ -50,22 +146,27 @@ def identify_independent_claims(text: str):
     prompt = f"""
     You are a patent attorney. I am providing you with the text of a patent document.
     Please extract all the INDEPENDENT claims. Ignore dependent claims.
-    Return the result as a strictly formatted JSON array of strings, where each string is the full text of an independent claim including its claim number.
+    Return the result as a strictly formatted JSON object with a single key "claims" (array of strings), where each string in the array is the full text of an independent claim including its claim number.
     Do not include markdown blocks like ```json in the final response. Only output raw JSON.
 
     PATENT TEXT:
     {text}
     """
     
+    config_params = configure_response_format(IndependentClaims, provider)
+    
     if provider == "openrouter":
         try:
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"}
+                **config_params
             }
             data = send_openrouter_request(payload, timeout=180.0)
-            return json.loads(data["choices"][0]["message"]["content"])
+            parsed = robust_json_decode(data["choices"][0]["message"]["content"])
+            if isinstance(parsed, list):
+                return parsed
+            return parsed.get("claims", [])
         except Exception as e:
             print("Failed to parse claims from OpenRouter:", e)
             return []
@@ -74,11 +175,14 @@ def identify_independent_claims(text: str):
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
+            config=types.GenerateContentConfig(**config_params)
         )
         
         try:
-            return json.loads(response.text)
+            parsed = robust_json_decode(response.text)
+            if isinstance(parsed, list):
+                return parsed
+            return parsed.get("claims", [])
         except Exception as e:
             print("Failed to parse claims from LLM:", e)
             return []
@@ -140,15 +244,17 @@ def extract_and_map_elements(claim_text: str, figures_list: list):
         except Exception as e:
             print(f"Could not load image {fig['image_path']}: {e}")
             
+    config_params = configure_response_format(ClaimAnalysis, provider)
+            
     if provider == "openrouter":
         try:
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": openrouter_content_array}],
-                "response_format": {"type": "json_object"}
+                **config_params
             }
             data = send_openrouter_request(payload, timeout=300.0)
-            return json.loads(data["choices"][0]["message"]["content"])
+            return robust_json_decode(data["choices"][0]["message"]["content"])
         except Exception as e:
              print("Failed to parse elements from OpenRouter:", e)
              return {"best_figure_id": "", "elements": []}
@@ -157,11 +263,11 @@ def extract_and_map_elements(claim_text: str, figures_list: list):
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=contents,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
+            config=types.GenerateContentConfig(**config_params)
         )
         
         try:
-             return json.loads(response.text)
+             return robust_json_decode(response.text)
         except Exception as e:
              print("Failed to parse elements from LLM:", e)
              return {"best_figure_id": "", "elements": []}

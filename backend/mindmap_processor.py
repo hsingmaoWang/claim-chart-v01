@@ -23,6 +23,8 @@ import analyzer
 import extractor
 get_genai_client = analyzer.get_genai_client
 extract_pdf_content = extractor.extract_pdf_content
+configure_response_format = analyzer.configure_response_format
+robust_json_decode = analyzer.robust_json_decode
 
 import asyncio
 from fastapi import BackgroundTasks
@@ -41,29 +43,80 @@ class MindMapConfig(BaseModel):
     efficacy_count: str = "3~6"
     file_id: str = ""
 
-async def safe_query_gemini_with_backoff(prompt, provider, client, max_retries=5):
+# --- Pydantic Schemas for MindMap Structured Outputs ---
+
+class CategoryMappingItem(BaseModel):
+    original_category: str
+    generalized_category: str
+
+class CategoryGeneralization(BaseModel):
+    mappings: list[CategoryMappingItem]
+
+class LabelDefinitionItem(BaseModel):
+    label_name: str
+    definition: str
+
+class LabelDefinitions(BaseModel):
+    definitions: list[LabelDefinitionItem]
+
+class TechTreeNode(BaseModel):
+    技術1階: str
+    技術2階: list[str]
+
+class Stage1Taxonomy(BaseModel):
+    summary_title: str
+    應用領域: list[str]
+    功效節點: list[str]
+    技術樹: list[TechTreeNode]
+
+class PatentStage1Mapping(BaseModel):
+    專利公開公告號: str
+    技術路徑: list[list[str]]
+    應用領域: list[str]
+    功效節點: list[str]
+
+class Stage1MappingResponse(BaseModel):
+    patents: list[PatentStage1Mapping]
+
+class Stage2LabelResponse(BaseModel):
+    技術3階類別: list[str]
+
+class PatentStage2Mapping(BaseModel):
+    專利公開公告號: str
+    技術3階: list[str]
+
+class Stage2MappingResponse(BaseModel):
+    patents: list[PatentStage2Mapping]
+
+async def safe_query_gemini_with_backoff(prompt, provider, client, response_schema=None, max_retries=5):
     """
-    帶有指數退避重試的 API 呼叫包裝。
+    帶有指數退避重試的 API 呼叫包裝，支援 JSON Schema 約束。
     使用 asyncio.to_thread 執行同步 SDK 呼叫以避免阻塞事件循環。
     """
     for attempt in range(max_retries):
         try:
+            config_params = configure_response_format(response_schema, provider)
             if provider == "openrouter":
                 def call_api():
                     payload = {
                         "model": "google/gemini-2.5-flash",
                         "messages": [{"role": "user", "content": prompt}],
-                        "response_format": {"type": "json_object"},
-                        "temperature": 0.1, "max_tokens": 8000
+                        "temperature": 0.1, "max_tokens": 8000,
+                        **config_params
                     }
                     return analyzer.send_openrouter_request(payload, timeout=300.0)
                 resp_data = await asyncio.to_thread(call_api)
                 return resp_data["choices"][0]["message"]["content"]
             else:
                 def call_api():
+                    config_dict = {
+                        "max_output_tokens": 8000,
+                        "temperature": 0.1,
+                        **config_params
+                    }
                     return client.models.generate_content(
                         model="gemini-2.5-flash", contents=prompt,
-                        config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
+                        config=config_dict
                     )
                 resp = await asyncio.to_thread(call_api)
                 return resp.text
@@ -87,48 +140,6 @@ def df_to_ai_content(df):
         ai_patents.append(p_data)
     return json.dumps(ai_patents, ensure_ascii=False)
 
-def robust_json_decode(text):
-    """自癒 JSON 解析器"""
-    text = text.strip()
-    text = re.sub(r'^```json\s*', '', text)
-    text = re.sub(r'\s*```$', '', text)
-    # 清除控制字元（這是 Unterminated string 的主要元兇）
-    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
-    
-    # 1. 嘗試直接解析
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 2. 嘗試尋找外層的第一個 { 和最後一個 } 並進行解析
-    start_idx = text.find('{')
-    end_idx = text.rfind('}')
-    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        try:
-            candidate = text[start_idx:end_idx+1]
-            # 移除可能的多餘尾隨逗號
-            candidate = re.sub(r',\s*([\]}])', r'\1', candidate)
-            return json.loads(candidate)
-        except Exception:
-            pass
-
-    # 3. 專利映射復原 (Legacy regex recovery)
-    logger.warning("Standard JSON parse failed, initiating regex recovery...")
-    objs = re.findall(r'\{(?:[^{}]|\{[^{}]*\})*\}', text)
-    patents = []
-    for obj_str in objs:
-        try:
-            clean_obj = re.sub(r',\s*}', '}', obj_str)
-            p_item = json.loads(clean_obj)
-            if "專利公開公告號" in p_item:
-                patents.append(p_item)
-        except:
-            continue
-    if patents:
-        return {"patents": patents}
-    raise ValueError("Could not recover valid JSON.")
-
 def refine_categories_with_ai(parent_name, subcategories, max_count, provider, client=None):
     """
     使用 AI 進行超限分類的「層級廣度自癒壓縮（AI-driven generalization）」。
@@ -140,22 +151,25 @@ def refine_categories_with_ai(parent_name, subcategories, max_count, provider, c
 因為限制，子類別數量最多只能有 {max_count} 個。
 請依據這些子類別的名稱與語意特徵，重新進行概念向上歸納（Generalization / 分類廣度調整），將它們歸併為最多 {max_count} 個標籤命名更寬廣、更具代表性的新子類別。
 
-請輸出一個嚴格格式的 JSON 對照表，將原來的子類別對應到歸納後的新子類別，例如：
+請輸出一個 JSON 物件，其中包含 key "mappings" (陣列)，陣列中每個元素為包含 "original_category" 與 "generalized_category" 的物件，將原來的子類別對應到歸納後的新子類別，例如：
 {{
-  "原類別A": "新歸納寬類別1",
-  "原類別B": "新歸納寬類別1",
-  "原類別C": "新歸納寬類別2"
+  "mappings": [
+    {{"original_category": "原類別A", "generalized_category": "新歸納寬類別1"}},
+    {{"original_category": "原類別B", "generalized_category": "新歸納寬類別1"}},
+    {{"original_category": "原類別C", "generalized_category": "新歸納寬類別2"}}
+  ]
 }}
-注意：對照表中的值（新類別）數量不能超過 {max_count} 個。
+注意：對照表中 "generalized_category" 的相異值（新類別）數量不能超過 {max_count} 個。
 ONLY output raw JSON. Do not include markdown blocks like ```json in the final response.
 """
     try:
+        config_params = configure_response_format(CategoryGeneralization, provider)
         if provider == "openrouter":
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.1
+                "temperature": 0.1,
+                **config_params
             }
             resp_data = analyzer.send_openrouter_request(payload, timeout=60.0)
             response_text = resp_data["choices"][0]["message"]["content"]
@@ -284,56 +298,73 @@ def query_definitions_for_taxonomy(taxonomy: dict, provider: str, client=None) -
 
     # Collect all labels from the taxonomy
     labels = []
-    labels.extend(taxonomy.get("\u61c9\u7528\u9818\u57df", []))
-    labels.extend(taxonomy.get("\u529f\u6548\u7bc0\u9ede", []))
-    for t1_item in taxonomy.get("\u6280\u8853\u6a39", []):
-        t1_name = t1_item.get("\u6280\u88531\u968e", "")
+    labels.extend(taxonomy.get("應用領域", []))
+    labels.extend(taxonomy.get("功效節點", []))
+    for t1_item in taxonomy.get("技術樹", []):
+        t1_name = t1_item.get("技術1階", "")
         if t1_name:
             labels.append(t1_name)
-        labels.extend([t2 for t2 in t1_item.get("\u6280\u88532\u968e", []) if t2])
+        labels.extend([t2 for t2 in t1_item.get("技術2階", []) if t2])
 
     if not labels:
         return {}
 
     labels_str = "\n".join([f"- {label}" for label in labels])
-    prompt = f"""\u4f60\u662f\u5c08\u5229\u5206\u985e\u5c08\u5bb6\u3002\u4ee5\u4e0b\u662f\u4e00\u7d44\u5c08\u5229\u5206\u985e\u6a19\u7c64\uff0c\u8acb\u70ba\u6bcf\u500b\u6a19\u7c64\u649f\u5beb\u7d0460\u5b57\u7684\u7e41\u9ad4\u4e2d\u6587\u5b9a\u7fa9\u8aaa\u660e\u3002
+    prompt = f"""你是專利分類專家。以下是一組專利分類標籤，請為每個標籤撰寫約 60 字的繁體中文定義說明。
 
-\u5206\u985e\u6a19\u7c64\u6e05\u55ae\uff1a
+分類標籤清單：
 {labels_str}
 
-\u3010\u683c\u5f0f\u898f\u5b9a\u3011\uff1a
-- \u53ea\u8f38\u51fa\u4e00\u500b JSON \u7269\u4ef6\uff0cKey \u70ba\u6a19\u7c64\u540d\u7a31\uff0cValue \u70ba\u8a72\u6a19\u7c64\u7684\u7e41\u9ad4\u4e2d\u6587\u5b9a\u7fa9\uff0860\u5b57\u4ee5\u5167\uff09\u3002
-- Value \u5fc5\u9808\u662f\u55ae\u884c\u5b57\u4e32\uff0c\u7981\u6b62\u5728 Value \u4e2d\u5305\u542b\u63db\u884c\u6216\u672a\u8f49\u7fa9\u7684\u5f15\u865f\u3002
-- \u7bc4\u4f8b\u683c\u5f0f\uff1a
-{{{{
-  "\u6a19\u7c64\u540d\u7a31A": "\u6b64\u985e\u5225\u6db5\u84cb\u76f8\u95dc\u6280\u8853\uff0c\u4e3b\u8981\u61c9\u7528\u65bc\u7279\u5b9a\u5834\u666f\uff0c\u5177\u6709\u4ee3\u8868\u6027\u7279\u6027\u3002",
-  "\u6a19\u7c64\u540d\u7a31B": "..."
-}}}}
+【格式要求】：
+- 輸出一個 JSON 物件，包含唯一的 key "definitions" (陣列)。
+- 陣列中每個元素為包含 "label_name" 與 "definition" 的物件。
+- 範例格式：
+{{
+  "definitions": [
+    {{"label_name": "標籤名稱A", "definition": "此類別涵蓋相關技術，主要應用於特定場景，具有代表性特性。"}},
+    {{"label_name": "標籤名稱B", "definition": "..."}}
+  ]
+}}
 """
     try:
+        config_params = configure_response_format(LabelDefinitions, provider)
         response_text = ""
         if provider == "openrouter":
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
                 "temperature": 0.1,
-                "max_tokens": 16000
+                "max_tokens": 16000,
+                **config_params
             }
             resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
             response_text = resp_data["choices"][0]["message"]["content"]
         else:
+            if client is None:
+                client = get_genai_client()
+            config_dict = {
+                "max_output_tokens": 16000,
+                "temperature": 0.1,
+                **config_params
+            }
             resp = client.models.generate_content(
                 model="gemini-2.5-flash", contents=prompt,
-                config={"max_output_tokens": 16000, "temperature": 0.1, "response_mime_type": "application/json"}
+                config=config_dict
             )
             response_text = resp.text
 
         parsed = robust_json_decode(response_text)
-        # Ensure it is a flat label->definition dict, not a patents-wrapped result
-        if isinstance(parsed, dict) and "patents" not in parsed:
-            return parsed
-        return {}
+        definitions_dict = {}
+        if isinstance(parsed, dict) and "definitions" in parsed:
+            for item in parsed["definitions"]:
+                if isinstance(item, dict) and "label_name" in item and "definition" in item:
+                    definitions_dict[item["label_name"]] = item["definition"]
+        elif isinstance(parsed, dict):
+            # Fallback legacy parsing
+            for k, v in parsed.items():
+                if isinstance(v, str) and k != "definitions":
+                    definitions_dict[k] = v
+        return definitions_dict
     except Exception as e:
         logger.warning(f"Definitions generation failed (non-critical, will be empty): {e}")
         return {}
@@ -399,20 +430,26 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
 {patents_list}
 """
     try:
+        config_params = configure_response_format(Stage1Taxonomy, provider)
         response_text = ""
         if provider == "openrouter":
             payload = {
                 "model": "google/gemini-2.5-flash",
                 "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.1, "max_tokens": 8000
+                "temperature": 0.1, "max_tokens": 8000,
+                **config_params
             }
             resp_data = analyzer.send_openrouter_request(payload, timeout=600.0)
             response_text = resp_data["choices"][0]["message"]["content"]
         else:
+            config_dict = {
+                "max_output_tokens": 8000,
+                "temperature": 0.1,
+                **config_params
+            }
             resp = client.models.generate_content(
                 model="gemini-2.5-flash", contents=prompt,
-                config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
+                config=config_dict
             )
             response_text = resp.text
 
@@ -602,20 +639,26 @@ def execute_batch_mapping(df, taxonomy, provider, client=None):
 {batch_text}
 """
         try:
+            config_params = configure_response_format(Stage1MappingResponse, provider)
             response_text = ""
             if provider == "openrouter":
                 payload = {
                     "model": "google/gemini-2.5-flash",
                     "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"},
-                    "temperature": 0.1, "max_tokens": 8000
+                    "temperature": 0.1, "max_tokens": 8000,
+                    **config_params
                 }
                 resp_data = analyzer.send_openrouter_request(payload, timeout=300.0)
                 response_text = resp_data["choices"][0]["message"]["content"]
             else:
+                config_dict = {
+                    "max_output_tokens": 8000,
+                    "temperature": 0.1,
+                    **config_params
+                }
                 resp = client.models.generate_content(
                     model="gemini-2.5-flash", contents=prompt,
-                    config={"max_output_tokens": 8000, "temperature": 0.1, "response_mime_type": "application/json"}
+                    config=config_dict
                 )
                 response_text = resp.text
 
@@ -751,7 +794,7 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
 {batch_text}
 """
                     try:
-                        response_text = await safe_query_gemini_with_backoff(prompt, provider, client)
+                        response_text = await safe_query_gemini_with_backoff(prompt, provider, client, response_schema=Stage1MappingResponse)
                         parsed = robust_json_decode(response_text)
                         batch_mapped = parsed.get("patents", [])
                         
@@ -867,7 +910,7 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
 {batch_text_labels}
 """
                 try:
-                    response_text_gen = await safe_query_gemini_with_backoff(prompt_gen, provider, client)
+                    response_text_gen = await safe_query_gemini_with_backoff(prompt_gen, provider, client, response_schema=Stage2LabelResponse)
                     parsed_gen = robust_json_decode(response_text_gen)
                     t3_labels = parsed_gen.get("技術3階類別", [])
                     if not t3_labels:
@@ -918,7 +961,7 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
 {batch_text_map}
 """
                     try:
-                        response_text_map = await safe_query_gemini_with_backoff(prompt_map, provider, client)
+                        response_text_map = await safe_query_gemini_with_backoff(prompt_map, provider, client, response_schema=Stage2MappingResponse)
                         parsed_map = robust_json_decode(response_text_map)
                         patent_t3_list = parsed_map.get("patents", [])
                         
