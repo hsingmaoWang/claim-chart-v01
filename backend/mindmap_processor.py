@@ -525,6 +525,31 @@ async def reprocess_mindmap(config: MindMapConfig):
 class MapStage1Request(BaseModel):
     file_id: str
     taxonomy: dict
+    resume: bool = True  # True = 接續上次進度；False = 刪除舊 checkpoint 重新執行
+
+@router.get("/api/mindmap/check_checkpoint")
+async def check_checkpoint(file_id: str):
+    """
+    查詢指定 file_id 是否存在未完成的 checkpoint。
+    回傳 has_checkpoint、已完成的 stage1/stage2 筆數，供前端決定是否顯示接續提示。
+    """
+    cp_path = os.path.join(checkpoint_dir, f"{file_id}_checkpoint.json")
+    if not os.path.exists(cp_path):
+        return {"has_checkpoint": False}
+    try:
+        with open(cp_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        s1_count = len(data.get("stage1_completed", []))
+        s2_count = len(data.get("stage2_completed", []))
+        total = s1_count  # 以 stage1 已完成數作為參考基準
+        return {
+            "has_checkpoint": True,
+            "stage1_completed_count": s1_count,
+            "stage2_completed_count": s2_count,
+        }
+    except Exception as e:
+        logger.warning(f"check_checkpoint: failed to read checkpoint for {file_id}: {e}")
+        return {"has_checkpoint": False}
 
 @router.post("/api/mindmap/map_stage1")
 async def map_stage1(req: MapStage1Request, background_tasks: BackgroundTasks):
@@ -535,6 +560,16 @@ async def map_stage1(req: MapStage1Request, background_tasks: BackgroundTasks):
         
         session = temp_storage[file_id]
         df = session["df"]
+
+        # 若使用者選擇「重新執行」，先刪除舊的 checkpoint
+        if not req.resume:
+            cp_path = os.path.join(checkpoint_dir, f"{file_id}_checkpoint.json")
+            if os.path.exists(cp_path):
+                try:
+                    os.remove(cp_path)
+                    logger.info(f"Checkpoint for file_id={file_id} deleted (resume=False).")
+                except Exception as e:
+                    logger.warning(f"Failed to delete checkpoint for {file_id}: {e}")
         
         task_id = str(uuid.uuid4())
         task_registry[task_id] = {
@@ -704,7 +739,8 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                 "原功效": str(row.get(col_eff, "")).strip()
             }
 
-        checkpoint_path = os.path.join(tempfile.gettempdir(), "mindmap_checkpoints", f"{task_id}_checkpoint.json")
+        # Checkpoint 路徑使用 file_id 命名（而非 task_id），確保跨任務重啟後仍可找到
+        checkpoint_path = os.path.join(checkpoint_dir, f"{file_id}_checkpoint.json")
         checkpoint_data = {
             "stage1_completed": [],
             "stage2_completed": [],

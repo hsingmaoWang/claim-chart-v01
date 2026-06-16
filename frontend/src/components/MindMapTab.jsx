@@ -48,6 +48,9 @@ const MindMapTab = () => {
   const [tempName, setTempName] = useState('');
   const [tempDef, setTempDef] = useState('');
 
+  // Resume / Restart dialog state
+  const [resumeDialog, setResumeDialog] = useState(null); // null = 尚未顯示; { s1Count, s2Count } = 顯示中
+
   const processFile = async (file) => {
     if (!file) return;
 
@@ -171,6 +174,32 @@ const MindMapTab = () => {
 
   const handleGenerateStage2 = async () => {
     if (!fileInfo) return;
+    setErrorMessage('');
+
+    // Step 0: 先查詢是否有未完成的 checkpoint
+    try {
+      const cpResp = await fetch(`/api/mindmap/check_checkpoint?file_id=${fileInfo.file_id}`);
+      if (cpResp.ok) {
+        const cpData = await cpResp.json();
+        if (cpData.has_checkpoint && (cpData.stage1_completed_count > 0 || cpData.stage2_completed_count > 0)) {
+          // 顯示接續/重新執行對話框
+          setResumeDialog({
+            s1Count: cpData.stage1_completed_count,
+            s2Count: cpData.stage2_completed_count,
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      // check_checkpoint 失敗就跟沒有 checkpoint 一樣，直接開始
+    }
+
+    await doLaunchStage2(true);
+  };
+
+  const doLaunchStage2 = async (resume) => {
+    if (!fileInfo) return;
+    setResumeDialog(null);
     setAppState('processing_stage2');
     setLoaderMessage('AI 正在啟動專利分類與映射任務 (已完成 0%)...');
     setErrorMessage('');
@@ -182,14 +211,15 @@ const MindMapTab = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           file_id: fileInfo.file_id,
-          taxonomy: stage1Taxonomy
+          taxonomy: stage1Taxonomy,
+          resume: resume
         })
       });
 
       if (!mapResponse.ok) {
         throw new Error('無法啟動專利分類背景任務。');
       }
-      
+
       const initData = await mapResponse.json();
       const taskId = initData.task_id;
 
@@ -199,9 +229,9 @@ const MindMapTab = () => {
           const statusResp = await fetch(`/api/mindmap/task_status?task_id=${taskId}`);
           if (!statusResp.ok) return;
           const statusData = await statusResp.json();
-          
+
           if (statusData.status === 'processing') {
-            const pct = statusData.total_count > 0 
+            const pct = statusData.total_count > 0
               ? Math.min(100, Math.round((statusData.completed_count / statusData.total_count) * 100))
               : 0;
             const stageLabel = statusData.stage === 2
@@ -210,7 +240,7 @@ const MindMapTab = () => {
             setLoaderMessage(`AI 正在進行${stageLabel} (已完成 ${pct}%)...`);
           } else if (statusData.status === 'completed') {
             clearInterval(pollInterval);
-            
+
             // 任務完成！向後端拿取最終結果
             setLoaderMessage('正在載入最終心智圖結構...');
             const finalResp = await fetch('/api/mindmap/generate_stage2', {
@@ -218,9 +248,9 @@ const MindMapTab = () => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ file_id: fileInfo.file_id })
             });
-            
+
             if (!finalResp.ok) throw new Error('無法載入最終專利映射結果。');
-            
+
             const finalData = await finalResp.json();
             setTreeData(finalData);
             setAppState('tree');
@@ -248,7 +278,7 @@ const MindMapTab = () => {
         ...treeData,
         stage1_taxonomy: stage1Taxonomy
       };
-      
+
       const response = await fetch('/api/mindmap/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -601,6 +631,55 @@ const MindMapTab = () => {
         </div>
       )}
 
+      {/* Resume / Restart 確認對話框 (Overlay) */}
+      {resumeDialog && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="glass-panel" style={{
+            padding: '2.5rem 2rem', borderRadius: '1.5rem',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            maxWidth: '480px', width: '90%',
+            textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>⚡</div>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--color-text)' }}>
+              偵測到上次未完成的進度
+            </h3>
+            <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              Stage 1（全域映射）已完成 <strong style={{ color: 'var(--color-primary)' }}>{resumeDialog.s1Count}</strong> 件
+              {resumeDialog.s2Count > 0 && <>，Stage 2（技術3階）已完成 <strong style={{ color: 'var(--color-secondary)' }}>{resumeDialog.s2Count}</strong> 件</>}。
+              <br />要從中斷處繼續，還是全部重新開始？
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button
+                onClick={() => doLaunchStage2(true)}
+                className="btn-primary"
+                style={{ padding: '0.75rem 1.75rem', borderRadius: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                🔄 接續上次進度
+              </button>
+              <button
+                onClick={() => doLaunchStage2(false)}
+                className="btn-secondary"
+                style={{ padding: '0.75rem 1.75rem', borderRadius: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                ♻️ 全部重新執行
+              </button>
+            </div>
+            <button
+              onClick={() => setResumeDialog(null)}
+              style={{ marginTop: '1rem', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
       {appState === 'review_stage1' && stage1Taxonomy && (
         <div className="taxonomy-review-workspace" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', margin: '0 auto', height: 'calc(100vh - 8rem)', maxHeight: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
           {/* Header Action Bar */}
@@ -651,7 +730,7 @@ const MindMapTab = () => {
               <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>🎯 1. 應用領域校正</span>
-                  <span style={{ fontSize: '0.75rem', background: 'var(--color-primary-glow)', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', background: 'Plum', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
                     {stage1Taxonomy.應用領域.length} 個
                   </span>
                 </h3>
@@ -665,21 +744,21 @@ const MindMapTab = () => {
                       />
                       <button
                         onClick={() => openViewModal('應用領域', domain)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
                         title="查看/編輯定義"
                       >
                         <HelpCircle size={16} />
                       </button>
                       <button
                         onClick={() => openEditModal('應用領域', domain, index)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'Aquamarine', cursor: 'pointer', padding: '0.2rem' }}
                         title="詳細修改"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => deleteDomain(index)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除"
                       >
                         <Trash2 size={16} />
@@ -700,7 +779,7 @@ const MindMapTab = () => {
               <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>⚡ 2. 功效節點校正</span>
-                  <span style={{ fontSize: '0.75rem', background: 'var(--color-primary-glow)', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', background: 'Plum', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
                     {stage1Taxonomy.功效節點.length} 個
                   </span>
                 </h3>
@@ -714,21 +793,21 @@ const MindMapTab = () => {
                       />
                       <button
                         onClick={() => openViewModal('功效節點', eff)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
                         title="查看/編輯定義"
                       >
                         <HelpCircle size={16} />
                       </button>
                       <button
                         onClick={() => openEditModal('功效節點', eff, index)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'Aquamarine', cursor: 'pointer', padding: '0.2rem' }}
                         title="詳細修改"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => deleteEfficacy(index)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除"
                       >
                         <Trash2 size={16} />
@@ -750,8 +829,8 @@ const MindMapTab = () => {
             <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>🛠️ 3. 技術 1-2 階分類校正</span>
-                <span style={{ fontSize: '0.75rem', background: 'var(--color-primary-glow)', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
-                  {stage1Taxonomy.技術樹.length} 階
+                <span style={{ fontSize: '0.75rem', background: 'Plum', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
+                  {stage1Taxonomy.技術樹.length} 個
                 </span>
               </h3>
               <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.2rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -768,20 +847,20 @@ const MindMapTab = () => {
                       <button
                         onClick={() => openViewModal('技術1階', t1Item.技術1階)}
                         style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
-                        title="定義"
+                        title="查看/編輯定義"
                       >
                         <HelpCircle size={16} />
                       </button>
                       <button
                         onClick={() => openEditModal('技術1階', t1Item.技術1階, t1Idx)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'MediumSpringGreen', cursor: 'pointer', padding: '0.2rem' }}
                         title="詳細修改"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => deleteT1(t1Idx)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除整條分支"
                       >
                         <Trash2 size={16} />
@@ -801,20 +880,20 @@ const MindMapTab = () => {
                           <button
                             onClick={() => openViewModal('技術2階', t2Item)}
                             style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
-                            title="定義"
+                            title="查看/編輯定義"
                           >
                             <HelpCircle size={14} />
                           </button>
                           <button
                             onClick={() => openEditModal('技術2階', t2Item, t2Idx, t1Idx)}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.1rem' }}
+                            style={{ border: 'none', background: 'transparent', color: 'MediumSpringGreen', cursor: 'pointer', padding: '0.1rem' }}
                             title="詳細修改"
                           >
                             <Edit2 size={13} />
                           </button>
                           <button
                             onClick={() => deleteT2(t1Idx, t2Idx)}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--color-error)', cursor: 'pointer', padding: '0.1rem' }}
+                            style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.1rem' }}
                             title="刪除"
                           >
                             <Trash2 size={14} />
@@ -843,238 +922,243 @@ const MindMapTab = () => {
 
           </div>
         </div>
-      )}
+      )
+      }
 
-      {appState === 'tree' && treeData && (
-        <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%' }}>
+      {
+        appState === 'tree' && treeData && (
+          <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%' }}>
 
-          <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label>應用領域:</label>
-              <input name="app_area_count" value={config.app_area_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+            <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <label>應用領域:</label>
+                <input name="app_area_count" value={config.app_area_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <label>技術1階:</label>
+                <input name="tech1_count" value={config.tech1_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <label>技術2階:</label>
+                <input name="tech2_count" value={config.tech2_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <label>技術3階:</label>
+                <input name="tech3_count" value={config.tech3_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <label>功效節點:</label>
+                <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+              </div>
+              <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
+              <div style={{ flex: 1 }} />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={() => captureImage && captureImage()} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 182, 212, 0.8)', color: 'white', cursor: 'pointer', border: '1px solid #67e8f9' }}>下載 PNG</button>
+                <button onClick={handleExportExcel} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-primary)', color: 'white', cursor: 'pointer' }}>下載 Excel</button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label>技術1階:</label>
-              <input name="tech1_count" value={config.tech1_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label>技術2階:</label>
-              <input name="tech2_count" value={config.tech2_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label>技術3階:</label>
-              <input name="tech3_count" value={config.tech3_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <label>功效節點:</label>
-              <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
-            </div>
-            <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
-            <div style={{ flex: 1 }} />
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button onClick={() => captureImage && captureImage()} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 182, 212, 0.8)', color: 'white', cursor: 'pointer', border: '1px solid #67e8f9' }}>下載 PNG</button>
-              <button onClick={handleExportExcel} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-primary)', color: 'white', cursor: 'pointer' }}>下載 Excel</button>
+
+            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
+              <MindMapTree
+                treeData={treeData}
+                levelHierarchy={levelHierarchy}
+                setLevelHierarchy={setLevelHierarchy}
+                onCaptureReady={setCaptureImage}
+              />
+
+              {/* Start New Button - Bottom Left of the result panel */}
+              <button
+                onClick={handleStartNew}
+                className="btn-secondary"
+                style={{
+                  position: 'absolute',
+                  bottom: '20px',
+                  left: '20px',
+                  zIndex: 20,
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: '0.5rem',
+                  background: 'var(--color-primary)',
+                  border: '1px solid var(--color-border)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(10px)',
+                  fontWeight: 'bold',
+                  boxShadow: '0 4px 15px var(--color-primary-glow)',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseOver={(e) => e.target.style.background = 'var(--color-primary-hover)'}
+                onMouseOut={(e) => e.target.style.background = 'var(--color-primary)'}
+              >
+                Start New
+              </button>
             </div>
           </div>
-
-          <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
-            <MindMapTree
-              treeData={treeData}
-              levelHierarchy={levelHierarchy}
-              setLevelHierarchy={setLevelHierarchy}
-              onCaptureReady={setCaptureImage}
-            />
-
-            {/* Start New Button - Bottom Left of the result panel */}
-            <button
-              onClick={handleStartNew}
-              className="btn-secondary"
-              style={{
-                position: 'absolute',
-                bottom: '20px',
-                left: '20px',
-                zIndex: 20,
-                padding: '0.6rem 1.2rem',
-                borderRadius: '0.5rem',
-                background: 'var(--color-primary)',
-                border: '1px solid var(--color-border)',
-                color: 'white',
-                cursor: 'pointer',
-                backdropFilter: 'blur(10px)',
-                fontWeight: 'bold',
-                boxShadow: '0 4px 15px var(--color-primary-glow)',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseOver={(e) => e.target.style.background = 'var(--color-primary-hover)'}
-              onMouseOut={(e) => e.target.style.background = 'var(--color-primary)'}
-            >
-              Start New
-            </button>
-          </div>
-        </div>
-      )}
+        )
+      }
 
       {/* --- Definition Modal --- */}
-      {isModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999,
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div className="glass-panel" style={{
-            width: '90%',
-            maxWidth: '500px',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '1.25rem',
-            padding: '2rem',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+      {
+        isModalOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)',
             display: 'flex',
-            flexDirection: 'column',
-            gap: '1.25rem',
-            position: 'relative'
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999,
+            animation: 'fadeIn 0.2s ease-out'
           }}>
-            <button 
-              onClick={() => setIsModalOpen(false)}
-              style={{
-                position: 'absolute',
-                top: '1.25rem',
-                right: '1.25rem',
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--color-text-muted)',
-                cursor: 'pointer'
-              }}
-            >
-              <X size={20} />
-            </button>
+            <div className="glass-panel" style={{
+              width: '90%',
+              maxWidth: '500px',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '1.25rem',
+              padding: '2rem',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+              position: 'relative'
+            }}>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                style={{
+                  position: 'absolute',
+                  top: '1.25rem',
+                  right: '1.25rem',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--color-text-muted)',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={20} />
+              </button>
 
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {modalMode === 'view' ? '📖 ' : modalMode === 'edit' ? '✍️ ' : '➕ '}
-              {modalMode === 'view' ? '定義說明' : modalMode === 'edit' ? '修改分類標籤' : `新增${modalData.type}`}
-            </h3>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {modalMode === 'view' ? '📖 ' : modalMode === 'edit' ? '✍️ ' : '➕ '}
+                {modalMode === 'view' ? '定義說明' : modalMode === 'edit' ? '修改分類標籤' : `新增${modalData.type}`}
+              </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
-                  分類標籤名稱
-                </label>
-                {modalMode === 'view' ? (
-                  <div style={{ padding: '0.6rem 0.8rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.2)', border: '1px solid var(--color-border)', fontSize: '0.95rem', fontWeight: '500' }}>
-                    {modalData.name}
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    value={tempName}
-                    onChange={(e) => setTempName(e.target.value)}
-                    placeholder="請輸入名稱"
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem 0.8rem',
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                    分類標籤名稱
+                  </label>
+                  {modalMode === 'view' ? (
+                    <div style={{ padding: '0.6rem 0.8rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.2)', border: '1px solid var(--color-border)', fontSize: '0.95rem', fontWeight: '500' }}>
+                      {modalData.name}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      placeholder="請輸入名稱"
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem 0.8rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid var(--color-border)',
+                        background: 'rgba(255,255,255,0.4)',
+                        color: 'var(--color-text)',
+                        outline: 'none',
+                        fontSize: '0.95rem'
+                      }}
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                    定義說明 (約 60 字繁中)
+                  </label>
+                  {modalMode === 'view' ? (
+                    <div style={{
+                      padding: '0.8rem 1rem',
                       borderRadius: '0.5rem',
+                      background: 'rgba(255,255,255,0.2)',
                       border: '1px solid var(--color-border)',
-                      background: 'rgba(255,255,255,0.4)',
-                      color: 'var(--color-text)',
-                      outline: 'none',
-                      fontSize: '0.95rem'
-                    }}
-                  />
-                )}
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
-                  定義說明 (約 60 字繁中)
-                </label>
-                {modalMode === 'view' ? (
-                  <div style={{ 
-                    padding: '0.8rem 1rem', 
-                    borderRadius: '0.5rem', 
-                    background: 'rgba(255,255,255,0.2)', 
-                    border: '1px solid var(--color-border)', 
-                    fontSize: '0.95rem', 
-                    lineHeight: '1.6', 
-                    minHeight: '100px',
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {tempDef || '尚無定義說明。'}
-                  </div>
-                ) : (
-                  <textarea
-                    rows={4}
-                    value={tempDef}
-                    onChange={(e) => setTempDef(e.target.value)}
-                    placeholder="請輸入該分類標籤的繁體中文定義說明 (約 60 字)..."
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem 0.8rem',
-                      borderRadius: '0.5rem',
-                      border: '1px solid var(--color-border)',
-                      background: 'rgba(255,255,255,0.4)',
-                      color: 'var(--color-text)',
-                      outline: 'none',
                       fontSize: '0.95rem',
-                      resize: 'none',
-                      lineHeight: '1.5'
-                    }}
-                  />
+                      lineHeight: '1.6',
+                      minHeight: '100px',
+                      whiteSpace: 'pre-wrap'
+                    }}>
+                      {tempDef || '尚無定義說明。'}
+                    </div>
+                  ) : (
+                    <textarea
+                      rows={4}
+                      value={tempDef}
+                      onChange={(e) => setTempDef(e.target.value)}
+                      placeholder="請輸入該分類標籤的繁體中文定義說明 (約 60 字)..."
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem 0.8rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid var(--color-border)',
+                        background: 'rgba(255,255,255,0.4)',
+                        color: 'var(--color-text)',
+                        outline: 'none',
+                        fontSize: '0.95rem',
+                        resize: 'none',
+                        lineHeight: '1.5'
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
+                {modalMode === 'view' ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setModalMode('edit');
+                      }}
+                      className="btn-secondary"
+                      style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                    >
+                      編輯
+                    </button>
+                    <button
+                      onClick={() => setIsModalOpen(false)}
+                      className="btn-primary"
+                      style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                    >
+                      關閉
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setIsModalOpen(false)}
+                      className="btn-secondary"
+                      style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSaveModal}
+                      className="btn-primary"
+                      style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
+                    >
+                      儲存
+                    </button>
+                  </>
                 )}
               </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
-              {modalMode === 'view' ? (
-                <>
-                  <button 
-                    onClick={() => {
-                      setModalMode('edit');
-                    }}
-                    className="btn-secondary"
-                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
-                  >
-                    編輯
-                  </button>
-                  <button 
-                    onClick={() => setIsModalOpen(false)}
-                    className="btn-primary"
-                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
-                  >
-                    關閉
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button 
-                    onClick={() => setIsModalOpen(false)}
-                    className="btn-secondary"
-                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
-                  >
-                    取消
-                  </button>
-                  <button 
-                    onClick={handleSaveModal}
-                    className="btn-primary"
-                    style={{ padding: '0.5rem 1.25rem', borderRadius: '0.5rem' }}
-                  >
-                    儲存
-                  </button>
-                </>
-              )}
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 
