@@ -5,7 +5,7 @@ import uuid
 import pandas as pd
 import re
 from collections import Counter
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import tempfile
@@ -87,6 +87,22 @@ class PatentStage2Mapping(BaseModel):
 
 class Stage2MappingResponse(BaseModel):
     patents: list[PatentStage2Mapping]
+
+# --- Pydantic Schemas for Preprocessing ---
+
+class PatentPreprocessItem(BaseModel):
+    專利公開公告號: str
+    AI技術簡述: str
+    技術特徵手段: str
+    解決的技術問題或技術效益: str
+    初篩結果: str
+
+class PreprocessBatchResponse(BaseModel):
+    patents: list[PatentPreprocessItem]
+
+class StartFromPreprocessRequest(BaseModel):
+    file_id: str
+    config: MindMapConfig
 
 async def safe_query_gemini_with_backoff(prompt, provider, client, response_schema=None, max_retries=5):
     """
@@ -464,6 +480,415 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
     except Exception as e:
         logger.error(f"Stage 1 LLM failed: {e}")
         return None
+
+async def preprocess_single_patent_with_retry(
+    p_no: str,
+    row,
+    title_col,
+    abstract_col,
+    novelty_col,
+    use_col,
+    advantage_col,
+    claim_col,
+    enable_screening: bool,
+    screening_criteria: str,
+    provider: str,
+    client
+) -> dict:
+    """
+    對單件專利進行預處理，最多重試 5 次。
+    使用指數退避（Exponential Backoff）防止連續觸發 Rate Limit。
+    5 次全部失敗後才回傳預設錯誤哨兵値。
+    """
+    title = str(row.get(title_col, "")).strip() if title_col else "無"
+    abstract = str(row.get(abstract_col, "")).strip() if abstract_col else "無"
+    novelty = str(row.get(novelty_col, "")).strip() if novelty_col else "無"
+    use = str(row.get(use_col, "")).strip() if use_col else "無"
+    advantage = str(row.get(advantage_col, "")).strip() if advantage_col else "無"
+    claim = str(row.get(claim_col, "")).strip() if claim_col else "無"
+
+    prompt = f"""你是專利分析與檢索專家。請針對以下 1 件專利進行分析，執行以下兩個任務：
+1. 撰寫各約 50-60 字的繁體中文「AI技術簡述」、「技術特徵手段」與「解決的技術問題或技術效益」。
+2. 【落入範圍初篩】：判定該專利是否落入範圍，結果限為 "Y" 或 "N"。無準則時全部判為 "Y"。
+
+【篩選準則】：
+{screening_criteria if enable_screening else "無篩選準則，請初篩判定為 Y"}
+
+【寫作規範】：
+- 「AI技術簡述」：說明該專利核心技術主題，約 50-60 字繁體中文。
+- 「技術特徵手段」：具體列出其實現的關鍵特徵，約 50-60 字繁體中文。
+- 「解決的技術問題或技術效益」：描述其克服的技術缺陷或帶來的效能提升，約 50-60 字繁體中文。
+- 「專利公開公告號」必須與輸入的完全一致。
+
+專利公開公告號: {p_no}
+標題: {title}
+專利摘要Abstract: {abstract}
+DWPI Novelty: {novelty}
+DWPI Use: {use}
+DWPI Advantage: {advantage}
+First Claim (Original language): {claim}
+"""
+
+    fallback = {
+        "AI技術簡述": "專利資料預處理失敗，重試已達 5 次上限，無法自動生成技術簡述。",
+        "技術特徵手段": "專利資料預處理失敗，重試已達 5 次上限，無法自動生成技術特徵手段。",
+        "解決的技術問題或技術效益": "專利資料預處理失敗，重試已達 5 次上限，無法自動生成技術效益說明。",
+        "初篩結果": "Y" if not enable_screening else "N"
+    }
+
+    for attempt in range(5):
+        try:
+            response_text = await safe_query_gemini_with_backoff(
+                prompt, provider, client, response_schema=PatentPreprocessItem
+            )
+            parsed = robust_json_decode(response_text)
+            if isinstance(parsed, dict) and parsed.get("AI技術簡述"):
+                logger.info(f"Single-patent retry succeeded for {p_no} on attempt {attempt + 1}.")
+                return {
+                    "AI技術簡述": parsed.get("AI技術簡述", ""),
+                    "技術特徵手段": parsed.get("技術特徵手段", ""),
+                    "解決的技術問題或技術效益": parsed.get("解決的技術問題或技術效益", ""),
+                    "初篩結果": "Y" if not enable_screening else ("Y" if str(parsed.get("初篩結果", "N")).upper() == "Y" else "N")
+                }
+        except Exception as e:
+            wait = 2 ** attempt
+            logger.warning(f"Single-patent retry [{attempt + 1}/5] failed for {p_no}: {e}. Waiting {wait}s...")
+            await asyncio.sleep(wait)
+
+    logger.error(f"Single-patent retry exhausted all 5 attempts for {p_no}. Returning fallback.")
+    return fallback
+
+
+async def run_preprocess_task(
+    task_id: str,
+    file_id: str,
+    file_path: str,
+    filename: str,
+    enable_screening: bool,
+    screening_criteria: str
+):
+    try:
+        import dotenv
+        dotenv.load_dotenv(override=True)
+        provider = os.environ.get("API_PROVIDER", "gemini").lower().strip().replace('"', '').replace("'", "")
+        client = get_genai_client() if provider != "openrouter" else None
+
+        df = extract_patents_from_excel(file_path)
+        total_count = len(df)
+
+        title_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["標題", "title", "名稱", "name"])), None)
+        abstract_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["摘要", "abstract"])), None)
+        novelty_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["novelty", "新穎性"])), None)
+        use_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["dwpi use", "use", "用途"])), None)
+        advantage_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["advantage", "優點", "功效"])), None)
+        claim_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["claim", "申請專利範圍", "權利要求", "first claim"])), None)
+        pub_col_name = next((c for c in df.columns if "號" in str(c).lower() or "number" in str(c).lower()), df.columns[0])
+
+        checkpoint_path = os.path.join(checkpoint_dir, f"{file_id}_preprocess_checkpoint.json")
+        checkpoint_data = {
+            "completed_patents": {}
+        }
+
+        if os.path.exists(checkpoint_path):
+            try:
+                with open(checkpoint_path, "r", encoding="utf-8") as f:
+                    checkpoint_data = json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load preprocess checkpoint: {e}")
+
+        completed_patents = checkpoint_data.get("completed_patents", {})
+
+        pending_rows = []
+        for idx, row in df.iterrows():
+            p_no = str(row.get(pub_col_name, "")).strip()
+            if not p_no:
+                p_no = f"ROW_{idx}"
+            if p_no not in completed_patents:
+                pending_rows.append((idx, p_no, row))
+
+        task_registry[task_id]["total_count"] = total_count
+        task_registry[task_id]["completed_count"] = len(completed_patents)
+
+        batch_size = 10
+        semaphore = asyncio.Semaphore(5)
+
+        async def process_batch(batch):
+            async with semaphore:
+                prompt = f"""你是專利分析與檢索專家。請針對以下 10 件專利的技術特徵與公開文字進行分析，並執行以下兩個任務：
+1. 為每一件專利分別撰寫各約 50-60 字的繁體中文「AI技術簡述」、「技術特徵手段」與「解決的技術問題或技術效益」。
+2. 【落入範圍初篩作業】：判定該專利是否落入特定的篩選準則範圍。初篩判定結果限為落入："Y" 或不落入："N"。
+   如果沒有提供篩選準則，請全部判定為 "Y"。
+
+【篩選準則】：
+{screening_criteria if enable_screening else "無篩選準則，請全部初篩判定為 Y"}
+
+【寫作規範】：
+- 「AI技術簡述」：說明該專利核心技術主題，約 50-60 字繁體中文。
+- 「技術特徵手段」：具體列出其實現的關鍵硬體/軟體/程序特徵手段，約 50-60 字繁體中文。
+- 「解決的技術問題或技術效益」：描述該專利克服的技術缺陷或帶來的效能提升，約 50-60 字繁體中文。
+- 每件專利的「專利公開公告號」必須與輸入的「專利公開公告號」完全一致。
+
+待分析專利列表：
+"""
+                for idx, p_no, row in batch:
+                    title = str(row.get(title_col, "")).strip() if title_col else "無"
+                    abstract = str(row.get(abstract_col, "")).strip() if abstract_col else "無"
+                    novelty = str(row.get(novelty_col, "")).strip() if novelty_col else "無"
+                    use = str(row.get(use_col, "")).strip() if use_col else "無"
+                    advantage = str(row.get(advantage_col, "")).strip() if advantage_col else "無"
+                    claim = str(row.get(claim_col, "")).strip() if claim_col else "無"
+
+                    prompt += f"""
+---
+專利公開公告號: {p_no}
+標題: {title}
+專利摘要Abstract: {abstract}
+DWPI Novelty: {novelty}
+DWPI Use: {use}
+DWPI Advantage: {advantage}
+First Claim (Original language): {claim}
+"""
+                try:
+                    response_text = await safe_query_gemini_with_backoff(prompt, provider, client, response_schema=PreprocessBatchResponse)
+                    parsed = robust_json_decode(response_text)
+                    batch_mapped = parsed.get("patents", [])
+                    
+                    res_dict = {}
+                    for item in batch_mapped:
+                        p_id = str(item.get("專利公開公告號", "")).strip()
+                        res_dict[p_id] = item
+                    
+                    results = []
+                    for idx, p_no, row in batch:
+                        item = res_dict.get(p_no)
+                        if item and item.get("AI技術簡述"):
+                            results.append((p_no, {
+                                "AI技術簡述": item.get("AI技術簡述", ""),
+                                "技術特徵手段": item.get("技術特徵手段", ""),
+                                "解決的技術問題或技術效益": item.get("解決的技術問題或技術效益", ""),
+                                "初篩結果": "Y" if not enable_screening else ("Y" if str(item.get("初篩結果", "N")).upper() == "Y" else "N")
+                            }))
+                        else:
+                            # 專利在批次回傳中遺漏或空白，啟動單件重試（最多 5 次）
+                            logger.warning(f"專利 {p_no} 在批次回傳中遺漏或解析失敗，啟動單件重試機制...")
+                            retry_result = await preprocess_single_patent_with_retry(
+                                p_no, row,
+                                title_col, abstract_col, novelty_col, use_col, advantage_col, claim_col,
+                                enable_screening, screening_criteria, provider, client
+                            )
+                            results.append((p_no, retry_result))
+                    return results
+                except Exception as e:
+                    logger.error(f"Preprocess batch failed: {e}. Attempting per-patent individual retry...")
+                    results = []
+                    for idx, p_no, row in batch:
+                        # 整個批次 API 呼叫失敗，對每件專利單件重試
+                        retry_result = await preprocess_single_patent_with_retry(
+                            p_no, row,
+                            title_col, abstract_col, novelty_col, use_col, advantage_col, claim_col,
+                            enable_screening, screening_criteria, provider, client
+                        )
+                        results.append((p_no, retry_result))
+                    return results
+
+        if pending_rows:
+            batches = [pending_rows[k:k+batch_size] for k in range(0, len(pending_rows), batch_size)]
+            for batch in batches:
+                batch_res = await process_batch(batch)
+                for p_no, res in batch_res:
+                    completed_patents[p_no] = res
+                
+                checkpoint_data["completed_patents"] = completed_patents
+                with open(checkpoint_path, "w", encoding="utf-8") as f:
+                    json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
+
+                task_registry[task_id]["completed_count"] = len(completed_patents)
+
+        for col in ["AI技術簡述", "技術特徵手段", "解決的技術問題或技術效益", "初篩結果"]:
+            if col not in df.columns:
+                df[col] = ""
+
+        y_count = 0
+        n_count = 0
+        patents_preview = []
+        for idx, row in df.iterrows():
+            p_no = str(row.get(pub_col_name, "")).strip()
+            if not p_no:
+                p_no = f"ROW_{idx}"
+            info = completed_patents.get(p_no, {
+                "AI技術簡述": "",
+                "技術特徵手段": "",
+                "解決的技術問題或技術效益": "",
+                "初篩結果": "Y"
+            })
+            df.at[idx, "AI技術簡述"] = info["AI技術簡述"]
+            df.at[idx, "技術特徵手段"] = info["技術特徵手段"]
+            df.at[idx, "解決的技術問題或技術效益"] = info["解決的技術問題或技術效益"]
+            df.at[idx, "初篩結果"] = info["初篩結果"]
+            
+            if info["初篩結果"] == "Y":
+                y_count += 1
+            else:
+                n_count += 1
+            
+            patents_preview.append({
+                "專利公開公告號": p_no,
+                "標題": str(row.get(title_col, "")) if title_col else "",
+                "AI技術簡述": info["AI技術簡述"],
+                "技術特徵手段": info["技術特徵手段"],
+                "解決的技術問題或技術效益": info["解決的技術問題或技術效益"],
+                "初篩結果": info["初篩結果"]
+            })
+
+        out_filename = f"preprocessed_{filename}"
+        out_dir = os.path.join(tempfile.gettempdir(), "mindmap_preprocess", file_id)
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, out_filename)
+        df.to_excel(out_path, index=False)
+
+        temp_storage[file_id] = {
+            "df_preprocessed": df,
+            "file_path_preprocessed": out_path,
+            "filename": filename
+        }
+
+        hit_rate = (y_count / total_count) * 100 if total_count > 0 else 0.0
+
+        task_registry[task_id]["status"] = "completed"
+        task_registry[task_id]["y_count"] = y_count
+        task_registry[task_id]["n_count"] = n_count
+        task_registry[task_id]["hit_rate"] = f"{hit_rate:.1f}%"
+        task_registry[task_id]["result"] = {
+            "file_id": file_id,
+            "filename": filename,
+            "y_count": y_count,
+            "n_count": n_count,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "patents": patents_preview
+        }
+
+        if os.path.exists(checkpoint_path):
+            try:
+                os.remove(checkpoint_path)
+            except:
+                pass
+
+    except Exception as err:
+        logger.error(f"Preprocess background task failed: {err}")
+        task_registry[task_id]["status"] = "failed"
+        task_registry[task_id]["error"] = str(err)
+
+
+@router.post("/api/mindmap/preprocess")
+async def preprocess_patent_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    enable_screening: bool = Form(False),
+    screening_criteria: str = Form("")
+):
+    try:
+        file_id = str(uuid.uuid4())
+        temp_dir = os.path.join(tempfile.gettempdir(), "mindmap_preprocess", file_id)
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, file.filename)
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
+            
+        df = extract_patents_from_excel(file_path)
+        if df.empty:
+            raise ValueError("上傳的 Excel 檔案為空。")
+
+        task_id = str(uuid.uuid4())
+        task_registry[task_id] = {
+            "status": "processing",
+            "completed_count": 0,
+            "total_count": len(df),
+            "result": None
+        }
+
+        background_tasks.add_task(
+            run_preprocess_task,
+            task_id,
+            file_id,
+            file_path,
+            file.filename,
+            enable_screening,
+            screening_criteria
+        )
+
+        return {"task_id": task_id, "file_id": file_id, "status": "processing"}
+    except Exception as e:
+        logger.error(f"Preprocess startup failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/mindmap/preprocess_status")
+async def get_preprocess_status(task_id: str):
+    if task_id not in task_registry:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task_info = task_registry[task_id]
+    return {
+        "status": task_info["status"],
+        "completed_count": task_info["completed_count"],
+        "total_count": task_info["total_count"],
+        "y_count": task_info.get("y_count", 0),
+        "n_count": task_info.get("n_count", 0),
+        "hit_rate": task_info.get("hit_rate", "0.0%"),
+        "error": task_info.get("error"),
+        "result": task_info.get("result")
+    }
+
+
+@router.post("/api/mindmap/start_from_preprocess")
+async def start_from_preprocess(req: StartFromPreprocessRequest):
+    try:
+        file_id = req.file_id
+        if file_id not in temp_storage:
+            raise HTTPException(status_code=400, detail="Session expired or invalid file_id")
+        
+        session = temp_storage[file_id]
+        df_full = session["df_preprocessed"]
+        
+        df_filtered = df_full[df_full["初篩結果"] == "Y"].copy()
+        
+        if df_filtered.empty:
+            raise HTTPException(status_code=400, detail="初篩結果落入(Y)的專利數量為0，無法生成心智圖分類。")
+
+        text_content = df_to_ai_content(df_filtered)
+        
+        result = query_gemini_stage1(text_content, req.config, df=df_filtered)
+        if not result:
+            raise ValueError("AI processing failed.")
+            
+        result["patents"] = []
+        
+        session["df"] = df_filtered
+        session["text"] = text_content
+        session["stage1_result"] = result
+        
+        result["file_id"] = file_id
+        result["filename"] = session["filename"]
+        result["is_stage1"] = True
+        return result
+    except Exception as e:
+        logger.error(f"Failed to start classification from preprocessed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/mindmap/export_preprocessed")
+async def export_preprocessed(file_id: str):
+    if file_id not in temp_storage or "file_path_preprocessed" not in temp_storage[file_id]:
+        raise HTTPException(status_code=400, detail="Preprocessed file not found or expired.")
+    
+    file_path = temp_storage[file_id]["file_path_preprocessed"]
+    filename = f"preprocessed_{temp_storage[file_id]['filename']}"
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 temp_storage = {}
 

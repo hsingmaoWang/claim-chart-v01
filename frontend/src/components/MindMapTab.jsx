@@ -51,18 +51,56 @@ const MindMapTab = () => {
   // Resume / Restart dialog state
   const [resumeDialog, setResumeDialog] = useState(null); // null = 尚未顯示; { s1Count, s2Count } = 顯示中
 
+  // Preprocessing States
+  const [enableScreening, setEnableScreening] = useState(false);
+  const [screeningCriteria, setScreeningCriteria] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [preprocessResult, setPreprocessResult] = useState(null);
+  const [proceedToClassification, setProceedToClassification] = useState(true);
+
+  const templates = [
+    {
+      id: 'packaging',
+      name: '半導體先進封裝技術',
+      text: '與半導體先進封裝結構、TSV、矽中介板、CoWoS 等封裝工藝設計相關的專利'
+    },
+    {
+      id: 'ai_vision',
+      name: 'AI 影像辨識與處理',
+      text: '與人工智慧影像辨識、目標偵測、深度學習模型應用於圖像分析相關的專利'
+    },
+    {
+      id: 'cooling',
+      name: '晶片散熱結構與材料',
+      text: '與晶片散熱鰭片、液冷管道、高熱導率散熱材料及結構設計相關的專利'
+    }
+  ];
+
+  const handleTemplateChange = (e) => {
+    const val = e.target.value;
+    setSelectedTemplate(val);
+    const found = templates.find(t => t.id === val);
+    if (found) {
+      setScreeningCriteria(found.text);
+    } else {
+      setScreeningCriteria('');
+    }
+  };
+
   const processFile = async (file) => {
     if (!file) return;
 
-    setAppState('processing');
-    setLoaderMessage('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
+    setAppState('preprocessing');
+    setLoaderMessage('AI 正在啟動專利讀取與預處理任務...');
     setErrorMessage('');
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('enable_screening', enableScreening);
+    formData.append('screening_criteria', screeningCriteria);
 
     try {
-      const response = await fetch('/api/mindmap/upload', {
+      const response = await fetch('/api/mindmap/preprocess', {
         method: 'POST',
         body: formData
       });
@@ -77,7 +115,96 @@ const MindMapTab = () => {
       }
 
       const data = await response.json();
-      setFileInfo({ file_id: data.file_id, filename: data.filename });
+      const taskId = data.task_id;
+      const fileId = data.file_id;
+      setFileInfo({ file_id: fileId, filename: file.name });
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResp = await fetch(`/api/mindmap/preprocess_status?task_id=${taskId}`);
+          if (!statusResp.ok) return;
+          const statusData = await statusResp.json();
+
+          if (statusData.status === 'processing') {
+            const pct = statusData.total_count > 0
+              ? Math.min(100, Math.round((statusData.completed_count / statusData.total_count) * 100))
+              : 0;
+            setLoaderMessage(`AI 正在進行專利資料讀取與 AI 預處理 (${pct}%)...`);
+          } else if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            setPreprocessResult(statusData.result);
+            setAppState('review_preprocess');
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            setErrorMessage(`預處理失敗: ${statusData.error}`);
+            setAppState('idle');
+          }
+        } catch (pollErr) {
+          console.error("Preprocessing polling error:", pollErr);
+        }
+      }, 2000);
+
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(err.message || 'Error occurred during preprocessing.');
+      setAppState('idle');
+    }
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    await processFile(file);
+  };
+
+  const handleExportPreprocessExcel = async () => {
+    if (!fileInfo) return;
+    try {
+      const response = await fetch(`/api/mindmap/export_preprocessed?file_id=${fileInfo.file_id}`);
+      if (!response.ok) throw new Error('Failed to export preprocessed Excel');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `preprocessed_${fileInfo.filename}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('匯出預處理 Excel 失敗。');
+    }
+  };
+
+  const handleProceedNext = async () => {
+    if (!proceedToClassification) {
+      handleStartNew();
+      return;
+    }
+
+    setAppState('processing');
+    setLoaderMessage('AI 正在依據初篩落入專利分析並建模全域分類樹 (Stage 1)...');
+    setErrorMessage('');
+
+    try {
+      const response = await fetch('/api/mindmap/start_from_preprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_id: fileInfo.file_id,
+          config: config
+        })
+      });
+
+      if (!response.ok) {
+        let errMessage = `Server error: ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) errMessage = errData.detail;
+        } catch (e) { }
+        throw new Error(errMessage);
+      }
+
+      const data = await response.json();
       setTreeData(data);
 
       if (data.is_stage1) {
@@ -97,14 +224,9 @@ const MindMapTab = () => {
       }
     } catch (err) {
       console.error(err);
-      setErrorMessage(err.message || 'Error occurred during processing.');
-      setAppState('idle');
+      setErrorMessage(err.message || '無法接續生成專利分類心智圖。');
+      setAppState('review_preprocess');
     }
-  };
-
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0];
-    await processFile(file);
   };
 
   const handleDrag = (e) => {
@@ -585,33 +707,237 @@ const MindMapTab = () => {
     <div className="mindmap-container animate-fade-in" style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
 
       {appState === 'idle' && (
-        <div
-          className={`upload-container glass-panel ${isDragging ? 'dragging' : ''}`}
-          style={{
-            textAlign: 'center',
-            padding: '4rem 2rem',
-            borderRadius: '1.5rem',
-            border: isDragging ? '2px dashed var(--color-primary)' : '1px solid var(--color-border)',
-            background: isDragging ? 'rgba(34, 211, 238, 0.2)' : 'var(--color-surface)',
-            transition: 'all 0.3s ease',
-            cursor: 'pointer',
-            marginTop: '2rem'
-          }}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <Upload size={52} color={isDragging ? 'var(--color-secondary)' : 'var(--color-text)'} style={{ marginBottom: '1rem' }} />
-          <h2 style={{ fontSize: '1.8rem', marginBottom: '0.8rem' }}>Upload Patent Data for Mind Map</h2>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: '2rem' }}>Drag and drop your file here, or click to browse. Excel formats are supported.</p>
-          <div>
-            <label className="btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', padding: '0.75rem 2rem', borderRadius: '0.75rem', background: 'var(--color-primary)', color: 'white', fontWeight: 'bold' }}>
-              Choose File
-              <input type="file" accept=".xlsx, .xls, .pdf" style={{ display: 'none' }} onChange={handleUpload} />
-            </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px', margin: '2rem auto', width: '100%' }}>
+          <div
+            className={`upload-container glass-panel ${isDragging ? 'dragging' : ''}`}
+            style={{
+              textAlign: 'center',
+              padding: '4rem 2rem',
+              borderRadius: '1.5rem',
+              border: isDragging ? '2px dashed var(--color-primary)' : '1px solid var(--color-border)',
+              background: isDragging ? 'rgba(34, 211, 238, 0.2)' : 'var(--color-surface)',
+              transition: 'all 0.3s ease',
+              cursor: 'pointer'
+            }}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
+            <Upload size={52} color={isDragging ? 'var(--color-secondary)' : 'var(--color-text)'} style={{ marginBottom: '1rem' }} />
+            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.8rem' }}>Upload Patent Data for Mind Map</h2>
+            <p style={{ color: 'var(--color-text-muted)', marginBottom: '2rem' }}>Drag and drop your file here, or click to browse. Excel formats are supported.</p>
+            <div>
+              <label className="btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', padding: '0.75rem 2rem', borderRadius: '0.75rem', background: 'var(--color-primary)', color: 'white', fontWeight: 'bold' }}>
+                Choose File
+                <input type="file" accept=".xlsx, .xls, .pdf" style={{ display: 'none' }} onChange={handleUpload} />
+              </label>
+            </div>
+            {errorMessage && <p style={{ color: 'var(--color-error)', marginTop: '1.5rem', fontWeight: '500' }}>{errorMessage}</p>}
           </div>
-          {errorMessage && <p style={{ color: 'var(--color-error)', marginTop: '1.5rem', fontWeight: '500' }}>{errorMessage}</p>}
+
+          <div className="glass-panel" style={{ padding: '1.5rem 2rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                🔍 落入範圍初篩設定 (Scope Screening Settings)
+              </h3>
+              <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={enableScreening}
+                  onChange={(e) => setEnableScreening(e.target.checked)}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <span style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>啟用初篩作業</span>
+              </label>
+            </div>
+
+            {enableScreening && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                    選擇初篩準則範本 (Select Preset Template)
+                  </label>
+                  <select
+                    value={selectedTemplate}
+                    onChange={handleTemplateChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid var(--color-border)',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: 'PaleTurquoise',
+                      outline: 'none',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    <option value="" style={{ background: '#011331ff' }}>-- 請選擇範本或自行輸入 --</option>
+                    {templates.map(t => (
+                      <option key={t.id} value={t.id} style={{ background: '#011331ff' }}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
+                    篩選準則內容 (Screening Criteria)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={screeningCriteria}
+                    onChange={(e) => setScreeningCriteria(e.target.value)}
+                    placeholder="請輸入初篩判定準則，例如：與半導體封裝或材料相關的專利..."
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid var(--color-border)',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: 'var(--color-text)',
+                      outline: 'none',
+                      fontSize: '0.9rem',
+                      resize: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {appState === 'preprocessing' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="processing-section glass-panel" style={{ padding: '5rem 3rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', textAlign: 'center', width: '100%', maxWidth: '600px' }}>
+            <Loader statusMessage={loaderMessage} />
+          </div>
+        </div>
+      )}
+
+      {appState === 'review_preprocess' && preprocessResult && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', height: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
+          <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyItems: 'center', alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                📊 預處理與初篩結果統計
+              </h2>
+              <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: '0.9rem' }}>
+                檔案名稱: <strong style={{ color: 'var(--color-text)' }}>{preprocessResult.filename}</strong>
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>總專利件數</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--color-text)' }}>{preprocessResult.patents.length}</div>
+              </div>
+              <div style={{ background: 'rgba(17, 88, 165, 0.1)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(27, 102, 181, 0.3)' }}>
+                <div style={{ fontSize: '0.85rem', color: '#42e2f0ff' }}>落入專利件數 (Y)</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00ffffff' }}>{preprocessResult.y_count}</div>
+              </div>
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                <div style={{ fontSize: '0.85rem', color: '#fca5a5' }}>不落入專利件數 (N)</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ef4444' }}>{preprocessResult.n_count}</div>
+              </div>
+              <div style={{ background: 'rgba(168, 85, 247, 0.1)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(168, 85, 247, 0.3)' }}>
+                <div style={{ fontSize: '0.85rem', color: '#9f45d6ff' }}>篩選命中率</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#bc55f7ff' }}>{preprocessResult.hit_rate}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass-panel" style={{ flex: 1, padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <h3 style={{ fontSize: '1.1rem', margin: '0 0 1rem 0', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
+              📋 預處理明細預覽 (顯示前 50 件)
+            </h3>
+
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>專利號</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>標題</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>AI技術簡述</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>技術特徵手段</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>解決的技術問題/效益</th>
+                    <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>初篩結果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preprocessResult.patents.slice(0, 50).map((p, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '0.75rem 0.5rem', fontWeight: '500', color: 'LightCyan', whiteSpace: 'nowrap' }}>{p.專利公開公告號}</td>
+                      <td style={{ padding: '0.75rem 0.5rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.標題}>{p.標題}</td>
+                      <td style={{ padding: '0.75rem 0.5rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.AI技術簡述}>{p.AI技術簡述}</td>
+                      <td style={{ padding: '0.75rem 0.5rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.技術特徵手段}>{p.技術特徵手段}</td>
+                      <td style={{ padding: '0.75rem 0.5rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.解決的技術問題或技術效益}>{p.解決的技術問題或技術效益}</td>
+                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                        <span style={{
+                          background: p.初篩結果 === 'Y' ? 'rgba(56, 206, 252, 0.86)' : 'rgba(239, 68, 68, 0.2)',
+                          color: p.初篩結果 === 'Y' ? '#eee722ff' : '#ef4444',
+                          border: p.初篩結果 === 'Y' ? '1px solid rgba(42, 168, 247, 1)' : '1px solid rgba(239, 68, 68, 0.4)',
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '0.5rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold'
+                        }}>
+                          {p.初篩結果}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
+              <div>
+                <button onClick={handleStartNew} className="btn-secondary" style={{ padding: '0.6rem 1.5rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem' }}>
+                  <ArrowLeft size={16} /> 重新上傳
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', marginRight: '1rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={proceedToClassification}
+                    onChange={(e) => setProceedToClassification(e.target.checked)}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--color-text)' }}>接續進行專利分類心智圖</span>
+                </label>
+
+                <button
+                  onClick={handleExportPreprocessExcel}
+                  className="btn-secondary"
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '0.5rem', fontSize: '0.95rem', fontWeight: 'bold' }}
+                >
+                  📥 匯出預處理 Excel
+                </button>
+
+                <button
+                  onClick={handleProceedNext}
+                  disabled={proceedToClassification && preprocessResult.y_count === 0}
+                  className="btn-primary"
+                  style={{
+                    padding: '0.6rem 2rem',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.95rem',
+                    background: (proceedToClassification && preprocessResult.y_count === 0) ? 'var(--color-text-muted)' : 'var(--color-primary)',
+                    border: 'none',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    boxShadow: (proceedToClassification && preprocessResult.y_count === 0) ? 'none' : '0 4px 10px var(--color-primary-glow)',
+                    cursor: (proceedToClassification && preprocessResult.y_count === 0) ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {proceedToClassification ? '🚀 開始心智圖分類' : '完成結束'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
