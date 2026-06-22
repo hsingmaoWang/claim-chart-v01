@@ -386,6 +386,66 @@ def query_definitions_for_taxonomy(taxonomy: dict, provider: str, client=None) -
         return {}
 
 
+def clean_label_name(label: str, parent_label: str = None) -> str:
+    """
+    1. 技術節點若其上階命名已有技術名稱，其下一階的命名不須再重複相同字眼。
+    2. 命名的總字數需不超過 12 個字。
+    """
+    if not label:
+        return label
+    label = label.strip()
+
+    if parent_label:
+        parent_label = parent_label.strip()
+        if parent_label and parent_label in label:
+            cleaned = label.replace(parent_label, "")
+            cleaned = cleaned.strip("-_/、 ")
+            if cleaned:
+                label = cleaned
+
+    if len(label) > 12:
+        label = label[:12]
+
+    return label
+
+
+def clean_stage1_taxonomy(taxonomy: dict) -> dict:
+    """
+    清理 Stage 1 生成之分類結構中的標籤命名。
+    """
+    if not isinstance(taxonomy, dict):
+        return taxonomy
+
+    # 1. 應用領域
+    if "應用領域" in taxonomy and isinstance(taxonomy["應用領域"], list):
+        taxonomy["應用領域"] = [clean_label_name(app) for app in taxonomy["應用領域"] if app]
+
+    # 2. 功效節點
+    if "功效節點" in taxonomy and isinstance(taxonomy["功效節點"], list):
+        taxonomy["功效節點"] = [clean_label_name(eff) for eff in taxonomy["功效節點"] if eff]
+
+    # 3. 技術樹
+    if "技術樹" in taxonomy and isinstance(taxonomy["技術樹"], list):
+        for t1_item in taxonomy["技術樹"]:
+            if not isinstance(t1_item, dict):
+                continue
+            t1_name = t1_item.get("技術1階", "")
+            if t1_name:
+                t1_name_cleaned = clean_label_name(t1_name)
+                t1_item["技術1階"] = t1_name_cleaned
+
+                # 技術2階 (以技術1階名稱為 parent)
+                if "技術2階" in t1_item and isinstance(t1_item["技術2階"], list):
+                    t2_list_cleaned = []
+                    for t2 in t1_item["技術2階"]:
+                        if t2:
+                            t2_cleaned = clean_label_name(t2, parent_label=t1_name_cleaned)
+                            t2_list_cleaned.append(t2_cleaned)
+                    t1_item["技術2階"] = t2_list_cleaned
+
+    return taxonomy
+
+
 def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
     import dotenv
     dotenv.load_dotenv(override=True)
@@ -427,6 +487,10 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
 3. 技術層級樹（只到2階）：
    - 技術1階：總共分類為 {config.tech1_count} 個主要技術類別。
    - 技術2階（依附於技術1階）：在每個「技術1階」下，分類為 {config.tech2_count} 個子技術類別。
+
+【分類標籤命名規則】：
+1. 命名總字數限制：所有分類標籤（包括應用領域、功效節點、技術1階、技術2階）之命名總字數不得超過 12 個字。
+2. 避免重複上階名稱：下階（技術2階）之命名不須且不要再重複其對應上階（技術1階）已有的技術名稱。例如：若「技術1階」命名為「光子積體電路」，則其下屬之「技術2階」不應命名為「光子積體電路電路設計」，而應簡化為「電路設計」。
 
 【任務與格式規定】：
 - 請構建全域分類目錄。
@@ -471,6 +535,8 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
 
         parsed = robust_json_decode(response_text)
         if parsed:
+            # 執行後處理命名規則清理 (12字上限及去除技術重複字眼)
+            parsed = clean_stage1_taxonomy(parsed)
             # Second-pass: generate definitions in a separate call to avoid Stage 1 JSON truncation
             logger.info("Stage 1 taxonomy generated. Running second-pass definitions generation...")
             definitions = query_definitions_for_taxonomy(parsed, provider, client)
@@ -1357,9 +1423,10 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                 prompt_gen = f"""你是專利分類專家。現有以下專利被歸類於「技術1階：{t1}」->「技術2階：{t2}」下方。
 請針對這批專利特徵，在「技術2階：{t2}」之下進一步細分出最匹配的「技術3階」子類別。
 
-【分類限制】：
+【分類限制與命名規則】：
 1. 技術3階：在此「技術2階：{t2}」子樹下，最多只能細分出 {config.tech3_count} 個「技術3階」子類別。
-2. 命名必須是具體、明確的技術特徵，且長度適中。
+2. 命名總字數限制：所有「技術3階」標籤之命名總字數不得超過 12 個字。
+3. 避免重複上階名稱：下階（技術3階）之命名不須且不要再重複其上階（技術2階：{t2} 或技術1階：{t1}）已有的技術名稱。例如：若上階已包含「電路設計」，則技術3階不應命名為「電路設計模擬與驗證」，應簡化為「模擬與驗證」。
 
 【格式】ONLY output a JSON object with a single key: "技術3階類別" (array of strings).
 例如：
@@ -1376,6 +1443,15 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                     t3_labels = parsed_gen.get("技術3階類別", [])
                     if not t3_labels:
                         t3_labels = ["其他"]
+                    else:
+                        cleaned_t3 = []
+                        for t3 in t3_labels:
+                            if t3:
+                                t3_c = clean_label_name(t3, parent_label=t2)
+                                t3_c = clean_label_name(t3_c, parent_label=t1)
+                                if t3_c:
+                                    cleaned_t3.append(t3_c)
+                        t3_labels = cleaned_t3 if cleaned_t3 else ["其他"]
                     t3_categories[path_key] = t3_labels
                 except Exception as e:
                     logger.error(f"Task {task_id}: Stage 2 Label Generation failed for {path_key}: {e}")
