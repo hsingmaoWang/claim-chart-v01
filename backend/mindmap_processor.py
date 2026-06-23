@@ -494,7 +494,7 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
 
 【任務與格式規定】：
 - 請構建全域分類目錄。
-- 產出一個 summary_title 概括這批專利的核心技術主題，必須是完整且有意義的名詞短語（例如：「光子積體電路技術與應用」、「半導體先進封裝技術」）。
+- 產出一個 summary_title 概括這批專利的核心技術主題，必須是完整、有意義且不超過12字的名詞短語（例如：「光子積體電路技術與應用」、「半導體先進封裝技術」）。
 - 務必調整分類命名的廣度 (Generalization/Specialization) 使得輸出的分類總數不違反上述限制。
 
 【格式】ONLY output a JSON object with keys: summary_title (string), 應用領域 (array of strings), 功效節點 (array of strings), 技術樹 (array of objects).
@@ -650,6 +650,26 @@ async def run_preprocess_task(
         claim_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["claim", "申請專利範圍", "權利要求", "first claim"])), None)
         pub_col_name = next((c for c in df.columns if "號" in str(c).lower() or "number" in str(c).lower()), df.columns[0])
 
+        # 偵測3個預處理輸出欄位 (若 Excel 中已存在)
+        col_brief  = next((c for c in df.columns if "AI技術簡述" in str(c)), None)
+        col_means  = next((c for c in df.columns if "技術特徵手段" in str(c)), None)
+        col_effect = next((c for c in df.columns if "解決的技術問題或技術效益" in str(c)), None)
+        col_screen = next((c for c in df.columns if "初篩結果" in str(c)), None)
+
+        def _get_existing_fields(row):
+            """從既有欄位取得3個預處理欄位值，回傳 (brief, means, effect) 字串三元組。"""
+            brief  = str(row.get(col_brief,  "")).strip() if col_brief  else ""
+            means  = str(row.get(col_means,  "")).strip() if col_means  else ""
+            effect = str(row.get(col_effect, "")).strip() if col_effect else ""
+            return brief, means, effect
+
+        def _get_existing_screen(row):
+            """從既有欄位取得初篩結果，若欄位不存在或值為空則回傳空字串。"""
+            if col_screen is None:
+                return ""
+            val = str(row.get(col_screen, "")).strip().upper()
+            return val if val in ("Y", "N") else ""
+
         checkpoint_path = os.path.join(checkpoint_dir, f"{file_id}_preprocess_checkpoint.json")
         checkpoint_data = {
             "completed_patents": {}
@@ -664,16 +684,50 @@ async def run_preprocess_task(
 
         completed_patents = checkpoint_data.get("completed_patents", {})
 
-        pending_rows = []
+        # 將待處理列分為三類：
+        #   ai_full_rows       — 任一預處理欄位為空 → 需要AI全量預處理
+        #   ai_screen_only_rows — 3欄均有值，但初篩結果為空且啟用初篩 → 只需AI做Y/N初篩
+        #   skipped_rows        — 3欄均有值且不需初篩判斷 → 直接沿用既有值
+        ai_full_rows = []
+        ai_screen_only_rows = []
+        skipped_rows = []
+
         for idx, row in df.iterrows():
             p_no = str(row.get(pub_col_name, "")).strip()
             if not p_no:
                 p_no = f"ROW_{idx}"
-            if p_no not in completed_patents:
-                pending_rows.append((idx, p_no, row))
+            if p_no in completed_patents:
+                continue  # 已有 checkpoint 結果，跳過
+            brief, means, effect = _get_existing_fields(row)
+            has_all_fields = bool(brief and means and effect)
+            if not has_all_fields:
+                ai_full_rows.append((idx, p_no, row))
+            else:
+                existing_screen = _get_existing_screen(row)
+                if enable_screening and not existing_screen:
+                    # 三欄均有值，但初篩結果缺漏且啟用初篩 → 只需AI判斷Y/N
+                    ai_screen_only_rows.append((idx, p_no, row))
+                else:
+                    # 完全不需AI：沿用既有值（初篩結果若有值用原值，否則預設Y）
+                    skipped_rows.append((idx, p_no, row))
 
-        task_registry[task_id]["total_count"] = total_count
-        task_registry[task_id]["completed_count"] = len(completed_patents)
+        # 預填 skipped 專利到 completed_patents（直接沿用既有欄位值）
+        for idx, p_no, row in skipped_rows:
+            brief, means, effect = _get_existing_fields(row)
+            existing_screen = _get_existing_screen(row)
+            completed_patents[p_no] = {
+                "AI技術簡述": brief,
+                "技術特徵手段": means,
+                "解決的技術問題或技術效益": effect,
+                "初篩結果": existing_screen if existing_screen else "Y"
+            }
+            logger.info(f"專利 {p_no}：3個預處理欄位均有值，跳過AI預處理，直接沿用既有資料。")
+
+        # 進度分母：需要AI處理的專利數（全量 + 僅初篩）
+        pending_rows = ai_full_rows  # 統一使用 pending_rows 變數供後續批次邏輯使用
+        ai_total_count = len(ai_full_rows) + len(ai_screen_only_rows)
+        task_registry[task_id]["total_count"] = ai_total_count if ai_total_count > 0 else 1
+        task_registry[task_id]["completed_count"] = len(completed_patents) - len(skipped_rows)
 
         batch_size = 10
         semaphore = asyncio.Semaphore(5)
@@ -757,6 +811,10 @@ First Claim (Original language): {claim}
                         results.append((p_no, retry_result))
                     return results
 
+        # 預先建立 skipped 專利號的 set，供進度計算使用
+        skipped_pnos = {r[1] for r in skipped_rows}
+
+        # 執行 AI 全量預處理批次（ai_full_rows）
         if pending_rows:
             batches = [pending_rows[k:k+batch_size] for k in range(0, len(pending_rows), batch_size)]
             for batch in batches:
@@ -768,7 +826,60 @@ First Claim (Original language): {claim}
                 with open(checkpoint_path, "w", encoding="utf-8") as f:
                     json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
 
-                task_registry[task_id]["completed_count"] = len(completed_patents)
+                # 進度：已完成全量AI數量（不含skipped）
+                ai_done = sum(1 for pno in completed_patents if pno not in skipped_pnos)
+                task_registry[task_id]["completed_count"] = ai_done
+
+        # 執行「純初篩」批次（ai_screen_only_rows）
+        # 這批專利3欄均有值，僅需AI判斷Y/N初篩結果
+        if ai_screen_only_rows:
+            logger.info(f"開始對 {len(ai_screen_only_rows)} 件3欄有值但初篩缺漏的專利進行純初篩判斷...")
+            for idx, p_no, row in ai_screen_only_rows:
+                brief, means, effect = _get_existing_fields(row)
+                title = str(row.get(title_col, "")).strip() if title_col else "無"
+                screen_prompt = f"""你是專利分析與檢索專家。請針對以下 1 件專利，執行【落入範圍初篩作業】：
+判定該專利是否落入特定的篩選準則範圍。初篩判定結果限為落入："Y" 或不落入："N"。
+
+【篩選準則】：
+{screening_criteria}
+
+專利公開公告號: {p_no}
+標題: {title}
+AI技術簡述: {brief}
+技術特徵手段: {means}
+解決的技術問題或技術效益: {effect}
+
+請輸出 JSON 物件，包含欄位：
+  "專利公開公告號": "{p_no}"
+  "AI技術簡述": "{brief}"
+  "技術特徵手段": "{means}"
+  "解決的技術問題或技術效益": "{effect}"
+  "初篩結果": "Y" 或 "N"
+"""
+                try:
+                    response_text = await safe_query_gemini_with_backoff(
+                        screen_prompt, provider, client, response_schema=PatentPreprocessItem
+                    )
+                    parsed = robust_json_decode(response_text)
+                    screen_val = "Y" if str(parsed.get("初篩結果", "N")).upper() == "Y" else "N"
+                except Exception as e:
+                    logger.warning(f"純初篩判斷失敗 ({p_no}): {e}，預設為 N")
+                    screen_val = "N"
+
+                completed_patents[p_no] = {
+                    "AI技術簡述": brief,
+                    "技術特徵手段": means,
+                    "解決的技術問題或技術效益": effect,
+                    "初篩結果": screen_val
+                }
+
+                # 更新進度
+                ai_done = sum(1 for pno_key in completed_patents if pno_key not in skipped_pnos)
+                task_registry[task_id]["completed_count"] = ai_done
+
+            checkpoint_data["completed_patents"] = completed_patents
+            with open(checkpoint_path, "w", encoding="utf-8") as f:
+                json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
 
         for col in ["AI技術簡述", "技術特徵手段", "解決的技術問題或技術效益", "初篩結果"]:
             if col not in df.columns:

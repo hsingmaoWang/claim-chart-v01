@@ -816,7 +816,7 @@ const MindMapTab = () => {
       )}
 
       {appState === 'review_preprocess' && preprocessResult && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', height: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '120%', height: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
           <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyItems: 'center', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: '200px' }}>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
