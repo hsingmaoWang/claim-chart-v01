@@ -132,8 +132,15 @@ const MindMapTab = () => {
             setLoaderMessage(`AI 正在進行專利資料讀取與 AI 預處理 (${pct}%)...`);
           } else if (statusData.status === 'completed') {
             clearInterval(pollInterval);
-            setPreprocessResult(statusData.result);
-            setAppState('review_preprocess');
+            if (statusData.result && statusData.result.is_bypass) {
+              alert("偵測到已分析 Excel，已直接為您開啟心智圖");
+              setTreeData(statusData.result.tree_data);
+              setStage1Taxonomy(statusData.result.tree_data.stage1_taxonomy);
+              setAppState('tree');
+            } else {
+              setPreprocessResult(statusData.result);
+              setAppState('review_preprocess');
+            }
           } else if (statusData.status === 'failed') {
             clearInterval(pollInterval);
             setErrorMessage(`預處理失敗: ${statusData.error}`);

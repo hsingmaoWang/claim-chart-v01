@@ -956,6 +956,136 @@ AI技術簡述: {brief}
         task_registry[task_id]["error"] = str(err)
 
 
+def detect_and_parse_bypass_excel(file_path, filename, file_id):
+    """
+    偵測上傳的 Excel 是否為先前導出的心智圖結果。
+    如果是，則解析內容並重構最終的分類心智圖結構，回傳 (True, final_result)。
+    否則回傳 (False, None)。
+    """
+    try:
+        xls = pd.ExcelFile(file_path)
+        sheet_name = "專利映射結果" if "專利映射結果" in xls.sheet_names else xls.sheet_names[0]
+        df = xls.parse(sheet_name).fillna("")
+        
+        required_cols = [
+            "專利公開公告號", "技術1階", "技術2階", "技術3階", 
+            "應用領域", "功效節點", "AI技術簡述", "技術特徵手段", 
+            "解決的技術問題或技術效益"
+        ]
+        
+        # 欄位比對：忽略前後空白，但字元需完全一致
+        col_mapping = {}
+        for r_col in required_cols:
+            found = next((c for c in df.columns if str(c).strip() == r_col), None)
+            if found is not None:
+                col_mapping[r_col] = found
+        
+        if len(col_mapping) < len(required_cols):
+            return False, None
+            
+        import ast
+        def parse_list(val):
+            if not val:
+                return []
+            val_str = str(val).strip()
+            if (val_str.startswith('[') and val_str.endswith(']')) or (val_str.startswith('(') and val_str.endswith(')')):
+                try:
+                    parsed = ast.literal_eval(val_str)
+                    if isinstance(parsed, (list, tuple)):
+                        return [str(x).strip() for x in parsed]
+                    elif isinstance(parsed, set):
+                        return [str(x).strip() for x in parsed]
+                except Exception:
+                    pass
+            for sep in (',', ';', '、'):
+                if sep in val_str:
+                    return [x.strip() for x in val_str.split(sep)]
+            return [val_str]
+
+        patents = []
+        for idx, row in df.iterrows():
+            p_no = str(row.get(col_mapping["專利公開公告號"], "")).strip()
+            if not p_no:
+                p_no = f"ROW_{idx}"
+            
+            t1 = parse_list(row.get(col_mapping["技術1階"]))
+            t2 = parse_list(row.get(col_mapping["技術2階"]))
+            t3 = parse_list(row.get(col_mapping["技術3階"]))
+            app = parse_list(row.get(col_mapping["應用領域"]))
+            eff = parse_list(row.get(col_mapping["功效節點"]))
+            
+            patents.append({
+                "專利公開公告號": p_no,
+                "技術1階": t1,
+                "技術2階": t2,
+                "技術3階": t3,
+                "應用領域": app,
+                "功效節點": eff,
+                "AI技術簡述": str(row.get(col_mapping["AI技術簡述"], "")).strip(),
+                "技術特徵手段": str(row.get(col_mapping["技術特徵手段"], "")).strip(),
+                "解決的技術問題或技術效益": str(row.get(col_mapping["解決的技術問題或技術效益"], "")).strip()
+            })
+
+        definitions = {}
+        if "分類標籤定義" in xls.sheet_names:
+            df_defs = xls.parse("分類標籤定義").fillna("")
+            name_col = next((c for c in df_defs.columns if str(c).strip() == "分類名稱"), None)
+            def_col = next((c for c in df_defs.columns if str(c).strip() == "定義說明"), None)
+            if name_col and def_col:
+                for _, row in df_defs.iterrows():
+                    name = str(row.get(name_col, "")).strip()
+                    definition = str(row.get(def_col, "")).strip()
+                    if name:
+                        definitions[name] = definition
+
+        # 重構技術樹層階 (1-2階)
+        t1_to_t2 = {}
+        for p in patents:
+            t1_val = p["技術1階"][0] if p["技術1階"] else "其他"
+            t2_val = p["技術2階"][0] if p["技術2階"] else "其他"
+            t1_to_t2.setdefault(t1_val, set()).add(t2_val)
+            
+        taxonomy_tech_tree = []
+        for t1, t2_set in t1_to_t2.items():
+            taxonomy_tech_tree.append({
+                "技術1階": t1,
+                "技術2階": sorted(list(t2_set))
+            })
+
+        all_apps = set()
+        all_effs = set()
+        for p in patents:
+            for a in p["應用領域"]:
+                if a: all_apps.add(a)
+            for e in p["功效節點"]:
+                if e: all_effs.add(e)
+
+        summary_title, _ = os.path.splitext(filename)
+        if not summary_title or summary_title.lower().startswith("preprocessed_") or summary_title.lower().startswith("mind_map_"):
+            summary_title = "專利分類心智圖"
+
+        stage1_taxonomy = {
+            "summary_title": summary_title,
+            "應用領域": sorted(list(all_apps)),
+            "功效節點": sorted(list(all_effs)),
+            "技術樹": taxonomy_tech_tree,
+            "定義說明": definitions
+        }
+
+        final_result = {
+            "summary_title": summary_title,
+            "patents": patents,
+            "file_id": file_id,
+            "filename": filename,
+            "stage1_taxonomy": stage1_taxonomy
+        }
+
+        return True, final_result
+    except Exception as e:
+        logger.error(f"Error parsing bypass excel: {e}")
+        return False, None
+
+
 @router.post("/api/mindmap/preprocess")
 async def preprocess_patent_file(
     background_tasks: BackgroundTasks,
@@ -971,6 +1101,32 @@ async def preprocess_patent_file(
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
             
+        # 1. 偵測是否可直接 Bypass AI 分析流程
+        is_bypass, final_result = detect_and_parse_bypass_excel(file_path, file.filename, file_id)
+        if is_bypass:
+            logger.info("偵測到已分析之 Excel 檔案，啟動直接生成分類心智圖 (Bypass) 流程。")
+            df_patents = pd.DataFrame(final_result["patents"])
+            temp_storage[file_id] = {
+                "df": df_patents,
+                "text": df_to_ai_content(df_patents),
+                "filename": file.filename,
+                "file_path_preprocessed": file_path,
+                "stage1_taxonomy": final_result["stage1_taxonomy"],
+                "stage2_result": final_result
+            }
+            task_id = str(uuid.uuid4())
+            task_registry[task_id] = {
+                "status": "completed",
+                "completed_count": len(final_result["patents"]),
+                "total_count": len(final_result["patents"]),
+                "result": {
+                    "is_bypass": True,
+                    "tree_data": final_result
+                }
+            }
+            return {"task_id": task_id, "file_id": file_id, "status": "completed"}
+
+        # 2. 正常預處理流程
         df = extract_patents_from_excel(file_path)
         if df.empty:
             raise ValueError("上傳的 Excel 檔案為空。")
