@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import Loader from './Loader';
 import MindMapTree from './MindMapTree';
 import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X } from 'lucide-react';
 
+const HeatmapView = lazy(() => import('./HeatmapView'));
+
 const MindMapTab = () => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
+  const [viewMode, setViewMode] = useState('tree'); // 'tree' or 'heatmap'
   const [errorMessage, setErrorMessage] = useState('');
   const [fileInfo, setFileInfo] = useState(null);
   const [treeData, setTreeData] = useState(null);
@@ -1063,7 +1066,7 @@ const MindMapTab = () => {
               <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>🎯 1. 應用領域校正</span>
-                  <span style={{ fontSize: '0.75rem', background: 'Plum', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', background: 'DodgerBlue', color: 'White', padding: '2px 8px', borderRadius: '0.5rem' }}>
                     {stage1Taxonomy.應用領域.length} 個
                   </span>
                 </h3>
@@ -1112,7 +1115,7 @@ const MindMapTab = () => {
               <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>⚡ 2. 功效節點校正</span>
-                  <span style={{ fontSize: '0.75rem', background: 'Plum', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', background: 'DodgerBlue', color: 'White', padding: '2px 8px', borderRadius: '0.5rem' }}>
                     {stage1Taxonomy.功效節點.length} 個
                   </span>
                 </h3>
@@ -1162,7 +1165,7 @@ const MindMapTab = () => {
             <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>🛠️ 3. 技術 1-2 階分類校正</span>
-                <span style={{ fontSize: '0.75rem', background: 'Plum', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: '0.5rem' }}>
+                <span style={{ fontSize: '0.75rem', background: 'DodgerBlue', color: 'White', padding: '2px 8px', borderRadius: '0.5rem' }}>
                   {stage1Taxonomy.技術樹.length} 個
                 </span>
               </h3>
@@ -1284,6 +1287,43 @@ const MindMapTab = () => {
                 <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
               </div>
               <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
+              
+              {/* Segmented View Mode Toggle */}
+              <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem' }}>
+                <button
+                  onClick={() => setViewMode('tree')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: '0.4rem',
+                    background: viewMode === 'tree' ? 'var(--color-primary)' : 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  心智圖
+                </button>
+                <button
+                  onClick={() => setViewMode('heatmap')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: '0.4rem',
+                    background: viewMode === 'heatmap' ? 'var(--color-primary)' : 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Heatmap
+                </button>
+              </div>
+
               <div style={{ flex: 1 }} />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button onClick={() => captureImage && captureImage()} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 182, 212, 0.8)', color: 'white', cursor: 'pointer', border: '1px solid #67e8f9' }}>下載 PNG</button>
@@ -1292,12 +1332,18 @@ const MindMapTab = () => {
             </div>
 
             <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
-              <MindMapTree
-                treeData={treeData}
-                levelHierarchy={levelHierarchy}
-                setLevelHierarchy={setLevelHierarchy}
-                onCaptureReady={setCaptureImage}
-              />
+              {viewMode === 'tree' ? (
+                <MindMapTree
+                  treeData={treeData}
+                  levelHierarchy={levelHierarchy}
+                  setLevelHierarchy={setLevelHierarchy}
+                  onCaptureReady={setCaptureImage}
+                />
+              ) : (
+                <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>Loading Heatmap...</div>}>
+                  <HeatmapView treeData={treeData} onCaptureReady={setCaptureImage} />
+                </Suspense>
+              )}
 
               {/* Start New Button - Bottom Left of the result panel */}
               <button

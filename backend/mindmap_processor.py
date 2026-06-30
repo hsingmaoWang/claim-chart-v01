@@ -1060,9 +1060,25 @@ def detect_and_parse_bypass_excel(file_path, filename, file_id):
             for e in p["功效節點"]:
                 if e: all_effs.add(e)
 
-        summary_title, _ = os.path.splitext(filename)
-        if not summary_title or summary_title.lower().startswith("preprocessed_") or summary_title.lower().startswith("mind_map_"):
-            summary_title = "專利分類心智圖"
+        # 優先從「專利映射結果」工作表的 N1 儲存格讀取 summary_title
+        summary_title = ""
+        try:
+            from openpyxl import load_workbook
+            wb_read = load_workbook(file_path, read_only=True, data_only=True)
+            if "專利映射結果" in wb_read.sheetnames:
+                ws_read = wb_read["專利映射結果"]
+                n1_val = ws_read["N1"].value
+                if n1_val and str(n1_val).strip():
+                    summary_title = str(n1_val).strip()
+            wb_read.close()
+        except Exception as e:
+            logger.warning(f"Failed to read summary_title from N1: {e}")
+
+        # 若 N1 無值，則從檔名推導
+        if not summary_title:
+            summary_title, _ = os.path.splitext(filename)
+            if not summary_title or summary_title.lower().startswith("preprocessed_") or summary_title.lower().startswith("mind_map_"):
+                summary_title = "專利分類心智圖"
 
         stage1_taxonomy = {
             "summary_title": summary_title,
@@ -1958,6 +1974,18 @@ async def export_mindmap_excel(data: dict):
         df_out.to_excel(writer, sheet_name="專利映射結果", index=False)
         if not df_defs.empty:
             df_defs.to_excel(writer, sheet_name="分類標籤定義", index=False)
-            
+
+    # 將 summary_title 寫入「專利映射結果」工作表的 N1 儲存格
+    summary_title_val = data.get("summary_title") or stage1_taxonomy.get("summary_title", "")
+    if summary_title_val:
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(out_path)
+            ws = wb["專利映射結果"]
+            ws["N1"] = summary_title_val
+            wb.save(out_path)
+        except Exception as e:
+            logger.warning(f"Failed to write summary_title to N1: {e}")
+
     return FileResponse(path=out_path, filename=out_filename,
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
