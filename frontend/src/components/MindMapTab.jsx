@@ -53,6 +53,7 @@ const MindMapTab = () => {
 
   // Resume / Restart dialog state
   const [resumeDialog, setResumeDialog] = useState(null); // null = 尚未顯示; { s1Count, s2Count } = 顯示中
+  const [bypassDialog, setBypassDialog] = useState(null); // null = 尚未顯示; { tree_data } = 顯示中
 
   // Preprocessing States
   const [enableScreening, setEnableScreening] = useState(false);
@@ -136,10 +137,7 @@ const MindMapTab = () => {
           } else if (statusData.status === 'completed') {
             clearInterval(pollInterval);
             if (statusData.result && statusData.result.is_bypass) {
-              alert("偵測到已分析 Excel，已直接為您開啟心智圖");
-              setTreeData(statusData.result.tree_data);
-              setStage1Taxonomy(statusData.result.tree_data.stage1_taxonomy);
-              setAppState('tree');
+              setBypassDialog({ tree_data: statusData.result.tree_data });
             } else {
               setPreprocessResult(statusData.result);
               setAppState('review_preprocess');
@@ -967,6 +965,45 @@ const MindMapTab = () => {
         </div>
       )}
 
+      {/* Bypass AI 確認對話框 (Overlay) */}
+      {bypassDialog && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="glass-panel" style={{
+            padding: '2.5rem 2rem', borderRadius: '1.5rem',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            maxWidth: '480px', width: '90%',
+            textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📋</div>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '1rem', color: 'lightskyblue' }}>
+              偵測到已分析之 Excel 檔案
+            </h3>
+            <p style={{ color: 'mediumaquamarine', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              啟動直接生成分類心智圖 (Bypass) 流程。
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  setTreeData(bypassDialog.tree_data);
+                  setStage1Taxonomy(bypassDialog.tree_data.stage1_taxonomy);
+                  setAppState('tree');
+                  setBypassDialog(null);
+                }}
+                className="btn-primary"
+                style={{ padding: '0.75rem 2.5rem', borderRadius: '0.75rem', fontWeight: 'bold' }}
+              >
+                確定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Resume / Restart 確認對話框 (Overlay) */}
       {resumeDialog && (
         <div style={{
@@ -1287,7 +1324,7 @@ const MindMapTab = () => {
                 <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
               </div>
               <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
-              
+
               {/* Segmented View Mode Toggle */}
               <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem' }}>
                 <button

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
 import html2canvas from 'html2canvas';
@@ -116,7 +117,7 @@ const SortableXChip = ({ dim, theme }) => {
         cursor: 'grab',
         userSelect: 'none',
         fontSize: '0.85rem',
-        color: isDark ? '#38bdf8' : '#0369a1',
+        color: isDark ? '#7dd3fc' : '#0284c7',
         fontWeight: '600',
         backdropFilter: 'blur(4px)',
         transition: 'box-shadow 0.2s'
@@ -143,17 +144,17 @@ const DraggableChip = ({ dim, zone, color = 'cyan', theme }) => {
     cyan: {
       bg: isDark ? 'rgba(14,165,233,0.15)' : 'rgba(14,165,233,0.08)',
       border: isDark ? 'rgba(14,165,233,0.4)' : 'rgba(14,165,233,0.25)',
-      text: isDark ? '#38bdf8' : '#0369a1'
+      text: isDark ? '#7dd3fc' : '#0284c7'
     },
     purple: {
       bg: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(168,85,247,0.08)',
       border: isDark ? 'rgba(168,85,247,0.4)' : 'rgba(168,85,247,0.25)',
-      text: isDark ? '#c084fc' : '#7e22ce'
+      text: isDark ? '#d8b4fe' : '#9333ea'
     },
     slate: {
       bg: isDark ? 'rgba(100,116,139,0.15)' : 'rgba(100,116,139,0.08)',
       border: isDark ? 'rgba(100,116,139,0.4)' : 'rgba(100,116,139,0.25)',
-      text: isDark ? '#94a3b8' : '#475569'
+      text: isDark ? '#cbd5e1' : '#64748b'
     },
   };
   const c = colors[color] || colors.cyan;
@@ -193,9 +194,9 @@ const DroppableZone = ({ id, children, label, hint, isEmpty, accent = 'cyan', th
   const { setNodeRef, isOver } = useDroppable({ id });
   const isDark = theme === 'dark';
   const accents = {
-    cyan: { over: 'rgba(14,165,233,0.15)', border: 'rgba(14,165,233,0.5)', label: isDark ? '#38bdf8' : '#0369a1' },
-    purple: { over: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.5)', label: isDark ? '#c084fc' : '#7e22ce' },
-    slate: { over: 'rgba(100,116,139,0.15)', border: 'rgba(100,116,139,0.4)', label: isDark ? '#94a3b8' : '#475569' },
+    cyan: { over: 'rgba(14,165,233,0.15)', border: 'rgba(14,165,233,0.5)', label: isDark ? '#7dd3fc' : '#0284c7' },
+    purple: { over: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.5)', label: isDark ? '#d8b4fe' : '#9333ea' },
+    slate: { over: 'rgba(100,116,139,0.15)', border: 'rgba(100,116,139,0.4)', label: isDark ? '#cbd5e1' : '#64748b' },
   };
   const a = accents[accent] || accents.cyan;
 
@@ -255,6 +256,27 @@ function filterSparseMatrix({ x, y, z }) {
     removedRows: y.length - filteredY.length
   };
 }
+
+// Custom modifier to center the drag overlay ghost directly under the cursor
+const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform }) => {
+  if (activeNodeRect && activatorEvent) {
+    const clientX = activatorEvent.clientX !== undefined
+      ? activatorEvent.clientX
+      : (activatorEvent.touches && activatorEvent.touches[0] ? activatorEvent.touches[0].clientX : null);
+    const clientY = activatorEvent.clientY !== undefined
+      ? activatorEvent.clientY
+      : (activatorEvent.touches && activatorEvent.touches[0] ? activatorEvent.touches[0].clientY : null);
+
+    if (clientX !== null && clientY !== null) {
+      return {
+        ...transform,
+        x: transform.x - (clientX - activeNodeRect.left - activeNodeRect.width / 2),
+        y: transform.y - (clientY - activeNodeRect.top - activeNodeRect.height / 2),
+      };
+    }
+  }
+  return transform;
+};
 
 // ─── Main HeatmapView component ───────────────────────────────────────────────
 const HeatmapView = ({ treeData, onCaptureReady }) => {
@@ -359,7 +381,7 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
           y: matrixData.y[yi],
           text: val > 0 ? String(val) : '',
           showarrow: false,
-          font: { size: 11, family: 'Outfit, Inter, system-ui, sans-serif', color: textColor }
+          font: { size: 13, family: 'Outfit, Inter, system-ui, sans-serif', color: textColor }
         });
       });
     });
@@ -369,7 +391,13 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
   // DnD handlers
   const handleDragStart = useCallback((event) => {
     const { active } = event;
-    const [zone, dimId] = active.id.split(':');
+    let zone, dimId;
+    if (String(active.id).includes(':')) {
+      [zone, dimId] = active.id.split(':');
+    } else {
+      zone = 'xAxis';
+      dimId = active.id;
+    }
     const dim = ALL_DIMENSIONS.find(d => d.id === dimId);
     setActiveDrag({ zone, dim });
   }, []);
@@ -379,8 +407,18 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
     setActiveDrag(null);
     if (!over) return;
 
-    const [srcZone, dimId] = active.id.split(':');
-    const destZone = over.id; // 'available', 'xAxis', or 'yAxis'
+    let srcZone, dimId;
+    if (String(active.id).includes(':')) {
+      [srcZone, dimId] = active.id.split(':');
+    } else {
+      srcZone = 'xAxis';
+      dimId = active.id;
+    }
+
+    let destZone = over.id;
+    if (destZone !== 'available' && destZone !== 'xAxis' && destZone !== 'yAxis') {
+      destZone = 'xAxis';
+    }
 
     if (srcZone === destZone) {
       // Reorder within X-axis list
@@ -535,7 +573,7 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: theme === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)',
+                        color: theme === 'dark' ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0,0,0,0.4)',
                         cursor: 'pointer',
                         padding: '0.2rem',
                         display: 'flex',
@@ -615,7 +653,7 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
                   height: '20px',
                   borderRadius: '999px',
                   background: showEmpty
-                    ? theme === 'dark' ? 'rgba(168,85,247,0.7)' : 'rgba(168,85,247,0.8)'
+                    ? theme === 'dark' ? 'rgba(169, 85, 247, 0.7)' : 'rgba(168,85,247,0.8)'
                     : theme === 'dark' ? 'rgba(14,165,233,0.7)' : 'rgba(14,165,233,0.8)',
                   position: 'relative',
                   transition: 'background 0.3s ease',
@@ -637,10 +675,10 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
                 }} />
               </div>
               <div>
-                <div style={{ fontSize: '0.78rem', fontWeight: '700', color: showEmpty ? '#c084fc' : theme === 'dark' ? '#38bdf8' : '#0284c7' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: '700', color: showEmpty ? (theme === 'dark' ? '#d8b4fe' : '#9333ea') : (theme === 'dark' ? '#7dd3fc' : '#0284c7') }}>
                   {showEmpty ? '顯示全部' : '過濾空行/列'}
                 </div>
-                <div style={{ fontSize: '0.66rem', color: theme === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.5)', marginTop: '1px' }}>
+                <div style={{ fontSize: '0.66rem', color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.65)', marginTop: '1px' }}>
                   {showEmpty ? '顯示所有零值行列' : '已隱藏全為零的行/列'}
                 </div>
               </div>
@@ -741,11 +779,11 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
           <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
-                🔥 專利相關性熱圖
+                🔥 專利相關性Heatmap
               </h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)' }}>
                 {hasData
-                  ? `Y: ${yAxisDim}  ×  X: ${xAxisDims.join(' > ')}`
+                  ? `Y: ${yAxisDim}  &  X: ${xAxisDims.join(' > ')}`
                   : '請在左側配置 X 軸與 Y 軸維度'}
               </p>
             </div>
@@ -804,7 +842,7 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
                 layout={{
                   title: {
                     text: `${yAxisDim} vs ${xAxisDims.join(' > ')}`,
-                    font: { family: 'Outfit, Inter, system-ui, sans-serif', size: 14, color: theme === 'dark' ? '#cbd5e1' : '#1e293b' }
+                    font: { family: 'Outfit, Inter, system-ui, sans-serif', size: 16, color: theme === 'dark' ? '#cbd5e1' : '#1e293b' }
                   },
                   autosize: true,
                   paper_bgcolor: 'rgba(0,0,0,0)',
@@ -812,12 +850,12 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
                   margin: { l: 160, r: 40, t: 60, b: 160 },
                   xaxis: {
                     tickangle: -45,
-                    tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 10, color: theme === 'dark' ? '#94a3b8' : '#334155' },
+                    tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                     gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                     zeroline: false
                   },
                   yaxis: {
-                    tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 10, color: theme === 'dark' ? '#94a3b8' : '#334155' },
+                    tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                     gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                     zeroline: false
                   },
@@ -833,28 +871,31 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
       </div>
 
       {/* Drag overlay ghost chip */}
-      <DragOverlay>
-        {activeDrag?.dim && (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            padding: '0.4rem 0.75rem',
-            background: theme === 'dark' ? 'rgba(14,165,233,0.35)' : 'rgba(14,165,233,0.2)',
-            border: theme === 'dark' ? '1px solid rgba(14,165,233,0.7)' : '1px solid rgba(14,165,233,0.5)',
-            borderRadius: '0.5rem',
-            fontSize: '0.85rem',
-            color: theme === 'dark' ? '#7dd3fc' : '#0369a1',
-            fontWeight: '600',
-            boxShadow: theme === 'dark' ? '0 8px 20px rgba(14,165,233,0.3)' : '0 8px 20px rgba(14,165,233,0.1)',
-            cursor: 'grabbing'
-          }}>
-            <GripVertical size={13} style={{ opacity: 0.6 }} />
-            <span>{activeDrag.dim.emoji}</span>
-            <span>{activeDrag.dim.label}</span>
-          </div>
-        )}
-      </DragOverlay>
+      {createPortal(
+        <DragOverlay modifiers={[snapCenterToCursor]}>
+          {activeDrag?.dim && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.4rem 0.75rem',
+              background: theme === 'dark' ? 'rgba(14,165,233,0.35)' : 'rgba(14,165,233,0.2)',
+              border: theme === 'dark' ? '1px solid rgba(14,165,233,0.7)' : '1px solid rgba(14,165,233,0.5)',
+              borderRadius: '0.5rem',
+              fontSize: '0.85rem',
+              color: theme === 'dark' ? '#7dd3fc' : '#0369a1',
+              fontWeight: '600',
+              boxShadow: theme === 'dark' ? '0 8px 20px rgba(14,165,233,0.3)' : '0 8px 20px rgba(14,165,233,0.1)',
+              cursor: 'grabbing'
+            }}>
+              <GripVertical size={13} style={{ opacity: 0.6 }} />
+              <span>{activeDrag.dim.emoji}</span>
+              <span>{activeDrag.dim.label}</span>
+            </div>
+          )}
+        </DragOverlay>,
+        document.body
+      )}
     </DndContext >
   );
 };
