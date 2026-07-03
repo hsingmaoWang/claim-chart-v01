@@ -83,4 +83,5 @@ logs/
 *.log
 tmp/
 temp/
+backend/data/usage_logs.xlsx
 # Note: .agents/ is kept as it contains project rules and skills

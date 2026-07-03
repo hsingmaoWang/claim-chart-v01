@@ -1,0 +1,17 @@
+{
+    "admin": {
+        "password_hash": "4a6c2c4d163abbd246761378a2078d5efb3140d3ea6a6c949f1170e3d010d29b",
+        "salt": "176c183f1c3334a0f17ee2734e854d99",
+        "role": "admin"
+    },
+    "user": {
+        "password_hash": "e197b2e23617514d394cf30735afecbfdcc7b65b3fc565ab83f6c4f5816fa01d",
+        "salt": "dbdb3eaac2e3afe27a42af478717dec0",
+        "role": "user"
+    },
+    "hm.wang": {
+        "password_hash": "fadda07eefde9121a85dd023f60b1b35a9be0d3a47e3bf76e7c8fc282cdb09ee",
+        "salt": "194fdc9e7d52ee3e78553c58b586a64a",
+        "role": "user"
+    }
+}

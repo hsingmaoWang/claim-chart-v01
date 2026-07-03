@@ -5,7 +5,7 @@ import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, La
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
 
-const MindMapTab = () => {
+const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
   const [viewMode, setViewMode] = useState('tree'); // 'tree' or 'heatmap'
   const [errorMessage, setErrorMessage] = useState('');
@@ -102,6 +102,10 @@ const MindMapTab = () => {
     formData.append('file', file);
     formData.append('enable_screening', enableScreening);
     formData.append('screening_criteria', screeningCriteria);
+    // Pass session_id so backend can log file upload & patent count
+    if (authState?.session_id) {
+      formData.append('x_session_id', authState.session_id);
+    }
 
     try {
       const response = await fetch('/api/mindmap/preprocess', {
@@ -196,7 +200,7 @@ const MindMapTab = () => {
     try {
       const response = await fetch('/api/mindmap/start_from_preprocess', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
         body: JSON.stringify({
           file_id: fileInfo.file_id,
           config: config
@@ -265,7 +269,7 @@ const MindMapTab = () => {
     try {
       const response = await fetch('/api/mindmap/reprocess', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
         body: JSON.stringify({ ...config, file_id: fileInfo.file_id })
       });
 
@@ -338,7 +342,7 @@ const MindMapTab = () => {
       // Step 1: 呼叫 map_stage1 啟動背景任務
       const mapResponse = await fetch('/api/mindmap/map_stage1', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
         body: JSON.stringify({
           file_id: fileInfo.file_id,
           taxonomy: stage1Taxonomy,
@@ -375,7 +379,7 @@ const MindMapTab = () => {
             setLoaderMessage('正在載入最終心智圖結構...');
             const finalResp = await fetch('/api/mindmap/generate_stage2', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
               body: JSON.stringify({ file_id: fileInfo.file_id })
             });
 
@@ -411,7 +415,7 @@ const MindMapTab = () => {
 
       const response = await fetch('/api/mindmap/export', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
         body: JSON.stringify(payload)
       });
 
@@ -1375,10 +1379,11 @@ const MindMapTab = () => {
                   levelHierarchy={levelHierarchy}
                   setLevelHierarchy={setLevelHierarchy}
                   onCaptureReady={setCaptureImage}
+                  authState={authState}
                 />
               ) : (
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>Loading Heatmap...</div>}>
-                  <HeatmapView treeData={treeData} onCaptureReady={setCaptureImage} />
+                  <HeatmapView treeData={treeData} onCaptureReady={setCaptureImage} authState={authState} />
                 </Suspense>
               )}
 

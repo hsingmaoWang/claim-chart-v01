@@ -279,7 +279,7 @@ const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform }) => {
 };
 
 // ─── Main HeatmapView component ───────────────────────────────────────────────
-const HeatmapView = ({ treeData, onCaptureReady }) => {
+const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const [theme, setTheme] = useState('dark');
   const heatmapContainerRef = useRef(null);
 
@@ -324,11 +324,20 @@ const HeatmapView = ({ treeData, onCaptureReady }) => {
         const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
         a.download = `heatmap_${timestamp}.png`;
         a.click();
+
+        // Log PNG download usage event
+        if (authState?.session_id) {
+          fetch('/api/usage/log-png', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: authState.session_id })
+          }).catch(err => console.error("Failed to log PNG download", err));
+        }
       } catch (err) {
         console.error("Failed to capture heatmap image", err);
       }
     }
-  }, [theme]);
+  }, [theme, authState]);
 
   // Expose captureImage to parent via callback
   useEffect(() => {

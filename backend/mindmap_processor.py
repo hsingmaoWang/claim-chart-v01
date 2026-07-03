@@ -5,7 +5,7 @@ import uuid
 import pandas as pd
 import re
 from collections import Counter
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import tempfile
@@ -923,10 +923,12 @@ AI技術簡述: {brief}
         out_path = os.path.join(out_dir, out_filename)
         df.to_excel(out_path, index=False)
 
+        old_session_id = temp_storage.get(file_id, {}).get("x_session_id", "")
         temp_storage[file_id] = {
             "df_preprocessed": df,
             "file_path_preprocessed": out_path,
-            "filename": filename
+            "filename": filename,
+            "x_session_id": old_session_id
         }
 
         hit_rate = (y_count / total_count) * 100 if total_count > 0 else 0.0
@@ -943,6 +945,15 @@ AI技術簡述: {brief}
             "hit_rate": f"{hit_rate:.1f}%",
             "patents": patents_preview
         }
+
+        # Log patent count to session if available
+        session_id = temp_storage.get(file_id, {}).get("x_session_id", "")
+        if session_id:
+            try:
+                from logger_handler import increment_patents_processed
+                await increment_patents_processed(session_id, total_count)
+            except Exception as e:
+                logger.warning(f"Failed to log patent count to session: {e}")
 
         if os.path.exists(checkpoint_path):
             try:
@@ -1107,7 +1118,8 @@ async def preprocess_patent_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     enable_screening: bool = Form(False),
-    screening_criteria: str = Form("")
+    screening_criteria: str = Form(""),
+    x_session_id: str = Form(default="")
 ):
     try:
         file_id = str(uuid.uuid4())
@@ -1116,6 +1128,14 @@ async def preprocess_patent_file(
         file_path = os.path.join(temp_dir, file.filename)
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
+
+        # Log uploaded filename to session
+        if x_session_id:
+            try:
+                from logger_handler import add_uploaded_file
+                await add_uploaded_file(x_session_id, file.filename)
+            except Exception:
+                pass
             
         # 1. 偵測是否可直接 Bypass AI 分析流程
         is_bypass, final_result = detect_and_parse_bypass_excel(file_path, file.filename, file_id)
@@ -1128,7 +1148,8 @@ async def preprocess_patent_file(
                 "filename": file.filename,
                 "file_path_preprocessed": file_path,
                 "stage1_taxonomy": final_result["stage1_taxonomy"],
-                "stage2_result": final_result
+                "stage2_result": final_result,
+                "x_session_id": x_session_id
             }
             task_id = str(uuid.uuid4())
             task_registry[task_id] = {
@@ -1140,6 +1161,13 @@ async def preprocess_patent_file(
                     "tree_data": final_result
                 }
             }
+            # Log patent count in bypass mode
+            if x_session_id:
+                try:
+                    from logger_handler import increment_patents_processed
+                    await increment_patents_processed(x_session_id, len(final_result["patents"]))
+                except Exception:
+                    pass
             return {"task_id": task_id, "file_id": file_id, "status": "completed"}
 
         # 2. 正常預處理流程
@@ -1154,6 +1182,9 @@ async def preprocess_patent_file(
             "total_count": len(df),
             "result": None
         }
+
+        # Store session_id for background task to log patent count
+        temp_storage[file_id] = {"x_session_id": x_session_id}
 
         background_tasks.add_task(
             run_preprocess_task,
@@ -1922,7 +1953,7 @@ async def generate_stage2(data: dict):
 
 
 @router.post("/api/mindmap/export")
-async def export_mindmap_excel(data: dict):
+async def export_mindmap_excel(data: dict, x_session_id: str = Header(default="")):
     patents = data.get("patents", [])
     original_filename = data.get("filename", "download")
     if not patents: raise HTTPException(status_code=400, detail="No data.")
@@ -1987,5 +2018,14 @@ async def export_mindmap_excel(data: dict):
         except Exception as e:
             logger.warning(f"Failed to write summary_title to N1: {e}")
 
+    # Log Excel download to the active session
+    if x_session_id:
+        try:
+            from logger_handler import increment_excel_downloads
+            await increment_excel_downloads(x_session_id)
+        except Exception:
+            pass
+
     return FileResponse(path=out_path, filename=out_filename,
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+

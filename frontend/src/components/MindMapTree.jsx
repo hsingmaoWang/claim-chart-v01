@@ -125,7 +125,7 @@ const generateMarkdown = (node, depth = 0) => {
     return result;
 };
 
-const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureReady }) => {
+const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureReady, authState }) => {
     const treeContainerRef = useRef(null);
     const svgRef = useRef(null);
     const markmapRef = useRef(null);
@@ -174,11 +174,20 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                 const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
                 a.download = `markmap_cyber_${timestamp}.png`;
                 a.click();
+
+                // Log PNG download usage event
+                if (authState?.session_id) {
+                    fetch('/api/usage/log-png', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: authState.session_id })
+                    }).catch(err => console.error("Failed to log PNG download", err));
+                }
             } catch (err) {
                 console.error("Failed to capture image", err);
             }
         }
-    }, [theme]);
+    }, [theme, authState]);
 
     // Expose captureImage to parent via callback
     useEffect(() => {

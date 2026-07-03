@@ -125,3 +125,34 @@ h1, h2, h3, h4, h5, h6 {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* ── Admin Panel scrollbar ── */
+[style*="overflowY: auto"]::-webkit-scrollbar,
+[style*="overflow-y: auto"]::-webkit-scrollbar {
+  width: 5px;
+}
+[style*="overflowY: auto"]::-webkit-scrollbar-track,
+[style*="overflow-y: auto"]::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.05);
+}
+[style*="overflowY: auto"]::-webkit-scrollbar-thumb,
+[style*="overflow-y: auto"]::-webkit-scrollbar-thumb {
+  background: rgba(8,145,178,0.5);
+  border-radius: 3px;
+}
+
+/* ── Admin table row hover ── */
+table tbody tr:hover td {
+  background: rgba(255,255,255,0.04);
+}
+
+/* ── Select option dark background fix ── */
+select option {
+  background: #0f172a;
+  color: white;
+}
+
+/* ── Login input focus (global fallback) ── */
+input:focus {
+  outline: none;
+}
