@@ -452,7 +452,11 @@ def query_gemini_stage1(text_content: str, config: MindMapConfig, df=None):
     provider = os.environ.get("API_PROVIDER", "gemini").lower().strip().replace('"', '').replace("'", "")
     client = get_genai_client() if provider != "openrouter" else None
 
-    pub_col_name = next((c for c in df.columns if "號" in str(c)), None) if df is not None else None
+    # 優先抓取 "Publication Number" 欄位，其次抓含「號」的欄位
+    pub_col_name = (
+        next((c for c in df.columns if "publication number" in str(c).lower()), None)
+        or next((c for c in df.columns if "號" in str(c)), None)
+    ) if df is not None else None
     
     col_app = next((c for c in df.columns if "應用領域" in str(c)), "")
     col_eff = next((c for c in df.columns if "功效節點" in str(c)), "")
@@ -648,7 +652,12 @@ async def run_preprocess_task(
         use_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["dwpi use", "use", "用途"])), None)
         advantage_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["advantage", "優點", "功效"])), None)
         claim_col = next((c for c in df.columns if any(k in str(c).lower() for k in ["claim", "申請專利範圍", "權利要求", "first claim"])), None)
-        pub_col_name = next((c for c in df.columns if "號" in str(c).lower() or "number" in str(c).lower()), df.columns[0])
+        # 優先抓取 "Publication Number" 欄位，其次抓含「號」或 "number" 的欄位
+        pub_col_name = (
+            next((c for c in df.columns if "publication number" in str(c).lower()), None)
+            or next((c for c in df.columns if "號" in str(c).lower() or "number" in str(c).lower()), None)
+            or df.columns[0]
+        )
 
         # 偵測3個預處理輸出欄位 (若 Excel 中已存在)
         col_brief  = next((c for c in df.columns if "AI技術簡述" in str(c)), None)
@@ -1171,9 +1180,22 @@ async def preprocess_patent_file(
             return {"task_id": task_id, "file_id": file_id, "status": "completed"}
 
         # 2. 正常預處理流程
-        df = extract_patents_from_excel(file_path)
+        try:
+            df = extract_patents_from_excel(file_path)
+        except Exception as e:
+            logger.error(f"Failed to read excel file: {e}")
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
         if df.empty:
-            raise ValueError("上傳的 Excel 檔案為空。")
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
+        # 欄位校驗：若同時沒有 1. 專利公開公告號 2. 專利摘要 3. First Claim 欄位，則報錯
+        pub_col_exists = any("publication number" in str(c).lower() or "號" in str(c).lower() or "number" in str(c).lower() for c in df.columns)
+        abstract_col_exists = any(any(k in str(c).lower() for k in ["摘要", "abstract"]) for c in df.columns)
+        claim_col_exists = any(any(k in str(c).lower() for k in ["claim", "申請專利範圍", "權利要求", "first claim"]) for c in df.columns)
+
+        if not pub_col_exists and not abstract_col_exists and not claim_col_exists:
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
 
         task_id = str(uuid.uuid4())
         task_registry[task_id] = {
@@ -1197,6 +1219,8 @@ async def preprocess_patent_file(
         )
 
         return {"task_id": task_id, "file_id": file_id, "status": "processing"}
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Preprocess startup failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1281,7 +1305,23 @@ async def upload_for_mindmap(file: UploadFile = File(...)):
         file_path = os.path.join(temp_dir, file.filename)
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
-        df = extract_patents_from_excel(file_path)
+        try:
+            df = extract_patents_from_excel(file_path)
+        except Exception as e:
+            logger.error(f"Failed to read excel file: {e}")
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
+        if df.empty:
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
+        # 欄位校驗：若同時沒有 1. 專利公開公告號 2. 專利摘要 3. First Claim 欄位，則報錯
+        pub_col_exists = any("publication number" in str(c).lower() or "號" in str(c).lower() or "number" in str(c).lower() for c in df.columns)
+        abstract_col_exists = any(any(k in str(c).lower() for k in ["摘要", "abstract"]) for c in df.columns)
+        claim_col_exists = any(any(k in str(c).lower() for k in ["claim", "申請專利範圍", "權利要求", "first claim"]) for c in df.columns)
+
+        if not pub_col_exists and not abstract_col_exists and not claim_col_exists:
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
         text_content = df_to_ai_content(df)
         
         config = MindMapConfig()
@@ -1302,6 +1342,8 @@ async def upload_for_mindmap(file: UploadFile = File(...)):
         result["filename"] = file.filename
         result["is_stage1"] = True
         return result
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1415,7 +1457,11 @@ async def get_task_status(task_id: str):
     }
 
 def execute_batch_mapping(df, taxonomy, provider, client=None):
-    pub_col_name = next((c for c in df.columns if "號" in str(c)), None)
+    # 優先抓取 "Publication Number" 欄位，其次抓含「號」的欄位
+    pub_col_name = (
+        next((c for c in df.columns if "publication number" in str(c).lower()), None)
+        or next((c for c in df.columns if "號" in str(c)), None)
+    )
     col_app = next((c for c in df.columns if "應用領域" in str(c)), "")
     col_eff = next((c for c in df.columns if "功效節點" in str(c)), "")
     col_brief = next((c for c in df.columns if "AI技術簡述" in str(c)), "")
@@ -1526,7 +1572,11 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
         provider = os.environ.get("API_PROVIDER", "gemini").lower().strip().replace('"', '').replace("'", "")
         client = get_genai_client() if provider != "openrouter" else None
 
-        pub_col_name = next((c for c in df.columns if "號" in str(c)), None)
+        # 優先抓取 "Publication Number" 欄位，其次抓含「號」的欄位
+        pub_col_name = (
+            next((c for c in df.columns if "publication number" in str(c).lower()), None)
+            or next((c for c in df.columns if "號" in str(c)), None)
+        )
         col_app = next((c for c in df.columns if "應用領域" in str(c)), "")
         col_eff = next((c for c in df.columns if "功效節點" in str(c)), "")
         col_brief = next((c for c in df.columns if "AI技術簡述" in str(c)), "")

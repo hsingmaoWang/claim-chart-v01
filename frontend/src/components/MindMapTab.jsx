@@ -38,6 +38,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [stage1Patents, setStage1Patents] = useState([]);
   const [stage1Backup, setStage1Backup] = useState(null); // to allow resets
 
+  const [warningMessage, setWarningMessage] = useState('');
+
   // Definition Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('view'); // 'view', 'edit', 'add'
@@ -158,14 +160,23 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
     } catch (err) {
       console.error(err);
-      setErrorMessage(err.message || 'Error occurred during preprocessing.');
+      if (err.message && err.message.includes("上傳檔案無相關資料")) {
+        setWarningMessage(err.message);
+      } else {
+        setErrorMessage(err.message || 'Error occurred during preprocessing.');
+      }
       setAppState('idle');
     }
   };
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
-    await processFile(file);
+    if (file) {
+      await processFile(file);
+    }
+    if (e.target) {
+      e.target.value = '';
+    }
   };
 
   const handleExportPreprocessExcel = async () => {
@@ -1412,6 +1423,102 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               >
                 Start New
               </button>
+            </div>
+          </div>
+        )
+      }
+
+      {/* --- Warning Modal --- */}
+      {
+        warningMessage && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10000,
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <div className="glass-panel" style={{
+              width: '90%',
+              maxWidth: '450px',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '1.25rem',
+              padding: '2.5rem 2rem',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1.5rem',
+              textAlign: 'center',
+              position: 'relative'
+            }}>
+              <button
+                onClick={() => setWarningMessage('')}
+                style={{
+                  position: 'absolute',
+                  top: '1.25rem',
+                  right: '1.25rem',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--color-text-muted)',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={20} />
+              </button>
+
+              <div style={{
+                width: '60px',
+                height: '60px',
+                borderRadius: '50%',
+                background: 'rgba(239, 68, 68, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid rgba(239, 68, 68, 0.3)'
+              }}>
+                <span style={{ fontSize: '2rem' }}>⚠️</span>
+              </div>
+
+              <h3 style={{ fontSize: '1.4rem', fontWeight: 'bold', margin: 0, color: 'var(--color-text)' }}>
+                上傳檔案警告
+              </h3>
+
+              <p style={{
+                fontSize: '1rem',
+                color: '#CCEEFF',
+                margin: 0,
+                lineHeight: 1.6
+              }}>
+                {warningMessage}
+              </p>
+
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
+                <button
+                  onClick={() => setWarningMessage('')}
+                  className="btn-primary"
+                  style={{
+                    padding: '0.75rem 2.5rem',
+                    borderRadius: '0.75rem',
+                    fontWeight: 'bold',
+                    fontSize: '0.95rem',
+                    border: 'none',
+                    cursor: 'pointer',
+                    width: '100%',
+                    background: 'var(--color-primary)'
+                  }}
+                >
+                  我知道了，重新上傳
+                </button>
+              </div>
             </div>
           </div>
         )
