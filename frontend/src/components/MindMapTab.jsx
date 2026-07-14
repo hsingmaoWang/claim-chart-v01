@@ -182,7 +182,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const handleExportPreprocessExcel = async () => {
     if (!fileInfo) return;
     try {
-      const response = await fetch(`/api/mindmap/export_preprocessed?file_id=${fileInfo.file_id}`);
+      const response = await fetch(`/api/mindmap/export_preprocessed?file_id=${fileInfo.file_id}`, {
+        headers: getAuthHeaders ? getAuthHeaders() : {}
+      });
       if (!response.ok) throw new Error('Failed to export preprocessed Excel');
 
       const blob = await response.blob();
@@ -437,10 +439,22 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       const a = document.createElement('a');
       a.href = url;
       let filename = 'mind_map_export.xlsx';
+      const rawFilename = (fileInfo && fileInfo.filename) || (treeData && treeData.filename);
+      if (rawFilename) {
+        const lastDotIndex = rawFilename.lastIndexOf('.');
+        const baseName = lastDotIndex !== -1 ? rawFilename.substring(0, lastDotIndex) : rawFilename;
+        filename = `${baseName}_分類結果.xlsx`;
+      }
       const disposition = response.headers.get('Content-Disposition');
       if (disposition && disposition.indexOf('filename=') !== -1) {
         const matches = disposition.match(/filename="?([^"]+)"?/);
-        if (matches != null && matches[1]) filename = matches[1];
+        if (matches != null && matches[1]) {
+          try {
+            filename = decodeURIComponent(matches[1]);
+          } catch (e) {
+            filename = matches[1];
+          }
+        }
       }
       a.download = filename;
       a.click();
@@ -1006,6 +1020,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                 onClick={() => {
                   setTreeData(bypassDialog.tree_data);
                   setStage1Taxonomy(bypassDialog.tree_data.stage1_taxonomy);
+                  if (bypassDialog.tree_data) {
+                    setFileInfo({
+                      file_id: bypassDialog.tree_data.file_id,
+                      filename: bypassDialog.tree_data.filename
+                    });
+                  }
                   setAppState('tree');
                   setBypassDialog(null);
                 }}

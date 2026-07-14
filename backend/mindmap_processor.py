@@ -930,7 +930,14 @@ AI技術簡述: {brief}
         out_dir = os.path.join(tempfile.gettempdir(), "mindmap_preprocess", file_id)
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, out_filename)
-        df.to_excel(out_path, index=False)
+        
+        with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name="Sheet1", index=False)
+            df_criteria = pd.DataFrame([
+                {"篩選設定項目": "是否啟用初篩", "設定內容": "是" if enable_screening else "否"},
+                {"篩選設定項目": "篩選準則內容", "設定內容": screening_criteria if screening_criteria else "無"}
+            ])
+            df_criteria.to_excel(writer, sheet_name="初篩定義", index=False)
 
         old_session_id = temp_storage.get(file_id, {}).get("x_session_id", "")
         temp_storage[file_id] = {
@@ -1281,13 +1288,22 @@ async def start_from_preprocess(req: StartFromPreprocessRequest):
 
 
 @router.get("/api/mindmap/export_preprocessed")
-async def export_preprocessed(file_id: str):
+async def export_preprocessed(file_id: str, x_session_id: str = Header(default="")):
     if file_id not in temp_storage or "file_path_preprocessed" not in temp_storage[file_id]:
         raise HTTPException(status_code=400, detail="Preprocessed file not found or expired.")
     
     file_path = temp_storage[file_id]["file_path_preprocessed"]
     filename = f"preprocessed_{temp_storage[file_id]['filename']}"
     
+    # Log Excel download to the active session
+    session_id = x_session_id or temp_storage[file_id].get("x_session_id")
+    if session_id:
+        try:
+            from logger_handler import increment_excel_downloads
+            await increment_excel_downloads(session_id)
+        except Exception:
+            pass
+
     return FileResponse(
         path=file_path,
         filename=filename,
@@ -2046,7 +2062,7 @@ async def export_mindmap_excel(data: dict, x_session_id: str = Header(default=""
     df_defs = pd.DataFrame(def_rows)
     
     name, _ = os.path.splitext(original_filename)
-    out_filename = f"{name}_AG.xlsx"
+    out_filename = f"{name}_分類結果.xlsx"
     temp_dir = os.path.join(tempfile.gettempdir(), "mindmap_export")
     os.makedirs(temp_dir, exist_ok=True)
     out_path = os.path.join(temp_dir, out_filename)
