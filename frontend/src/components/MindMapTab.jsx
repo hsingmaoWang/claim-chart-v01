@@ -66,30 +66,56 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
   const templates = [
     {
-      id: 'packaging',
-      name: '半導體先進封裝技術',
-      text: '與半導體先進封裝結構、TSV、矽中介板、CoWoS 等封裝工藝設計相關的專利'
+      id: 'fishbone',
+      name: '技術魚骨1-2階節點'
     },
     {
-      id: 'ai_vision',
-      name: 'AI 影像辨識與處理',
-      text: '與人工智慧影像辨識、目標偵測、深度學習模型應用於圖像分析相關的專利'
+      id: 'di_query',
+      name: 'DI檢索式'
     },
     {
-      id: 'cooling',
-      name: '晶片散熱結構與材料',
-      text: '與晶片散熱鰭片、液冷管道、高熱導率散熱材料及結構設計相關的專利'
+      id: 'keywords',
+      name: '技術Keywords'
     }
   ];
 
+  const [isGeneratingCriteria, setIsGeneratingCriteria] = useState(false);
+
   const handleTemplateChange = (e) => {
-    const val = e.target.value;
-    setSelectedTemplate(val);
-    const found = templates.find(t => t.id === val);
-    if (found) {
-      setScreeningCriteria(found.text);
-    } else {
-      setScreeningCriteria('');
+    setSelectedTemplate(e.target.value);
+  };
+
+  const handleAIAssist = async () => {
+    if (!selectedTemplate) {
+      alert('請先選擇準則類型！');
+      return;
+    }
+    if (!screeningCriteria.trim()) return;
+    setIsGeneratingCriteria(true);
+    try {
+      const response = await fetch('/api/mindmap/ai_assist_criteria', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getAuthHeaders ? getAuthHeaders() : {})
+        },
+        body: JSON.stringify({
+          criteria_type: selectedTemplate,
+          user_input: screeningCriteria
+        })
+      });
+      if (!response.ok) {
+        throw new Error('AI 輔助生成描述失敗');
+      }
+      const data = await response.json();
+      if (data.generated_text) {
+        setScreeningCriteria(data.generated_text);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'AI 輔助生成描述失敗，請稍後再試。');
+    } finally {
+      setIsGeneratingCriteria(false);
     }
   };
 
@@ -793,7 +819,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
-                    選擇初篩準則範本 (Select Preset Template)
+                    選擇初篩準則類型 (Select Screening Criteria Type)
                   </label>
                   <select
                     value={selectedTemplate}
@@ -809,7 +835,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       fontSize: '0.9rem'
                     }}
                   >
-                    <option value="" style={{ background: '#011331ff' }}>-- 請選擇範本或自行輸入 --</option>
+                    <option value="" style={{ background: '#011331ff' }}>-- 請選擇準則類型或自行輸入 --</option>
                     {templates.map(t => (
                       <option key={t.id} value={t.id} style={{ background: '#011331ff' }}>{t.name}</option>
                     ))}
@@ -817,11 +843,44 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
-                    篩選準則內容 (Screening Criteria)
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <label style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', margin: 0 }}>
+                      篩選準則內容 (Screening Criteria)
+                    </label>
+                    <button
+                      onClick={handleAIAssist}
+                      disabled={!screeningCriteria.trim() || isGeneratingCriteria}
+                      style={{
+                        padding: '0.4rem 1.2rem',
+                        borderRadius: '0.5rem',
+                        background: (!screeningCriteria.trim() || isGeneratingCriteria) 
+                          ? 'rgba(255,255,255,0.1)' 
+                          : 'linear-gradient(135deg, #0891b2, #1d4ed8)',
+                        color: (!screeningCriteria.trim() || isGeneratingCriteria)
+                          ? 'rgba(255,255,255,0.3)'
+                          : 'white',
+                        border: 'none',
+                        cursor: (!screeningCriteria.trim() || isGeneratingCriteria)
+                          ? 'not-allowed'
+                          : 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '0.85rem',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        boxShadow: (!screeningCriteria.trim() || isGeneratingCriteria)
+                          ? 'none'
+                          : '0 4px 10px rgba(8,145,178,0.3)',
+                        transition: 'all 200ms ease'
+                      }}
+                    >
+                      {isGeneratingCriteria ? '生成中...' : '🪄 AI輔助'}
+                    </button>
+                  </div>
                   <textarea
-                    rows={3}
+                    rows={9}
                     value={screeningCriteria}
                     onChange={(e) => setScreeningCriteria(e.target.value)}
                     placeholder="請輸入初篩判定準則，例如：與半導體封裝或材料相關的專利..."

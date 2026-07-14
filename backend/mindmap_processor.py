@@ -104,6 +104,10 @@ class StartFromPreprocessRequest(BaseModel):
     file_id: str
     config: MindMapConfig
 
+class AIAssistCriteriaRequest(BaseModel):
+    criteria_type: str
+    user_input: str
+
 async def safe_query_gemini_with_backoff(prompt, provider, client, response_schema=None, max_retries=5):
     """
     帶有指數退避重試的 API 呼叫包裝，支援 JSON Schema 約束。
@@ -1309,6 +1313,46 @@ async def export_preprocessed(file_id: str, x_session_id: str = Header(default="
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+@router.post("/api/mindmap/ai_assist_criteria")
+async def ai_assist_criteria(req: AIAssistCriteriaRequest):
+    try:
+        import dotenv
+        dotenv.load_dotenv(override=True)
+        provider = os.environ.get("API_PROVIDER", "gemini").lower().strip().replace('"', '').replace("'", "")
+        client = get_genai_client() if provider != "openrouter" else None
+        
+        type_names = {
+            "fishbone": "技術魚骨1-2階節點",
+            "di_query": "DI檢索式",
+            "keywords": "技術Keywords"
+        }
+        type_name = type_names.get(req.criteria_type, req.criteria_type)
+        
+        prompt = f"""你是專利分析與檢索專家。
+請依據使用者選擇的篩選準則類型「{type_name}」以及所輸入的內容，生成一段約 200 字左右的繁體中文「專利技術篩選準則範圍描述」。
+
+【篩選準則類型】：{type_name}
+【使用者輸入的內容】：{req.user_input}
+
+【技術關係分析規範】：
+- 請仔細解析使用者輸入的關鍵字或內容。
+- 如果輸入的關鍵字中含有逗號、分號、頓號、大於符號、斜線或上下層級縮進等，請合理分析並識別出它們之間的「上下階層關係（如父子、主從關係）」或「平行階層關係（如並列、替代關係）」。
+- 例如：若為技術魚骨節點，分析其一階與二階技術分支的層級關係；若為檢索式或關鍵字，分析其邏輯組合關係（AND/OR）。
+
+【生成要求】：
+1. 請產出一篇通順、語意連貫的繁體中文段落（長度約 200 字左右）。
+2. 段落中必須包含使用者輸入的所有核心 Keyword，並簡要描述這些技術點之間的對應關係與互動邏輯。
+3. 輸出必須**僅包含**生成的技術範圍描述段落本身，嚴禁任何引言、結語或 Markdown 區塊。
+"""
+        generated_text = await safe_query_gemini_with_backoff(prompt, provider, client)
+        if not generated_text:
+            raise HTTPException(status_code=500, detail="AI 生成失敗")
+            
+        return {"generated_text": generated_text.strip()}
+    except Exception as e:
+        logger.error(f"AI assist criteria failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 temp_storage = {}
 
