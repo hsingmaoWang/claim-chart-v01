@@ -88,6 +88,10 @@ class UpdateUserRequest(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
 # --- Original Models ---
 class UrlProcessRequest(BaseModel):
     url: str
@@ -149,6 +153,35 @@ async def logout(authorization: Optional[str] = Header(None)):
         remove_session(token)
     
     return {"message": "Logged out successfully."}
+
+@app.post("/api/auth/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Allow a logged-in user to change their own password."""
+    username = current_user["username"]
+
+    # Validate new password length
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密碼長度至少需要 6 個字元。")
+
+    # Verify current password is correct
+    user_info = verify_credentials(username, data.current_password)
+    if not user_info:
+        raise HTTPException(status_code=400, detail="目前的密碼不正確，請重新輸入。")
+
+    # Update with new password
+    users = load_users()
+    new_salt = secrets.token_hex(16)
+    users[username]["password_hash"] = get_password_hash(data.new_password, new_salt)
+    users[username]["salt"] = new_salt
+
+    if not save_users(users):
+        raise HTTPException(status_code=500, detail="儲存密碼時發生錯誤，請稍後再試。")
+
+    logger.info(f"User '{username}' changed their password successfully.")
+    return {"message": "密碼已成功更新。"}
 
 @app.post("/api/auth/heartbeat")
 async def heartbeat(data: HeartbeatRequest):

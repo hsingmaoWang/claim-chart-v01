@@ -6,6 +6,7 @@ import UrlInput from './components/UrlInput'
 import Loader from './components/Loader'
 import ResultCard from './components/ResultCard'
 import MindMapTab from './components/MindMapTab'
+import ChangePasswordModal from './components/ChangePasswordModal'
 
 const API_BASE = '';
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
@@ -28,6 +29,9 @@ function App() {
 
   // ── Admin panel ─────────────────────────────────────────────
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  // ── Change password modal ────────────────────────────────────
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // ── Main app state ──────────────────────────────────────────
   const [appState, setAppState] = useState('idle'); // idle, processing, complete, error
@@ -99,6 +103,7 @@ function App() {
     localStorage.removeItem('ag_role');
     setAuthState(null);
     setShowAdminPanel(false);
+    setShowChangePassword(false);
     setAppState('idle');
     setErrorMessage('');
   };
@@ -263,6 +268,26 @@ function App() {
           )}
         </div>
 
+        {/* Change Password button (all logged-in users) */}
+        <button
+          id="change-password-btn"
+          onClick={() => setShowChangePassword(true)}
+          title="修改密碼"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.4rem',
+            padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
+            background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.3)',
+            color: '#67e8f9', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            transition: 'all 200ms',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          修改密碼
+        </button>
+
         {isAdmin && (
           <button
             id="admin-panel-btn"
@@ -301,6 +326,15 @@ function App() {
           登出
         </button>
       </div>
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <ChangePasswordModal
+          authState={authState}
+          getAuthHeaders={getAuthHeaders}
+          onClose={() => setShowChangePassword(false)}
+        />
+      )}
 
       {/* Admin Panel Modal */}
       {showAdminPanel && (

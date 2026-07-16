@@ -71,7 +71,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     },
     {
       id: 'di_query',
-      name: 'DI檢索式'
+      name: 'DI檢索式 (Derwent Innovation)'
     },
     {
       id: 'keywords',
@@ -830,7 +830,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       borderRadius: '0.5rem',
                       border: '1px solid var(--color-border)',
                       background: 'rgba(255,255,255,0.08)',
-                      color: 'PaleTurquoise',
+                      color: '#CCEEFF',
                       outline: 'none',
                       fontSize: '0.9rem'
                     }}
@@ -853,8 +853,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       style={{
                         padding: '0.4rem 1.2rem',
                         borderRadius: '0.5rem',
-                        background: (!screeningCriteria.trim() || isGeneratingCriteria) 
-                          ? 'rgba(255,255,255,0.1)' 
+                        background: (!screeningCriteria.trim() || isGeneratingCriteria)
+                          ? 'rgba(255,255,255,0.1)'
                           : 'linear-gradient(135deg, #0891b2, #1d4ed8)',
                         color: (!screeningCriteria.trim() || isGeneratingCriteria)
                           ? 'rgba(255,255,255,0.3)'
@@ -883,7 +883,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     rows={9}
                     value={screeningCriteria}
                     onChange={(e) => setScreeningCriteria(e.target.value)}
-                    placeholder="請輸入初篩判定準則，例如：與半導體封裝或材料相關的專利..."
+                    placeholder="請依據準則類型，輸入初篩判定準則；或可輸入技術Keywords後，點擊AI輔助按鈕生成技術描述內容..."
                     style={{
                       width: '100%',
                       padding: '0.6rem',

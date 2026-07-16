@@ -302,11 +302,59 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     yAxis: ['功效節點']
   });
 
+  // Derive readable state
+  const xAxisDims = zones.xAxis;
+  const yAxisDim = zones.yAxis[0] || null;
+
   // Sparse matrix filter toggle (default: filter out all-zero rows/cols)
   const [showEmpty, setShowEmpty] = useState(false);
 
   // Active drag tracking
   const [activeDrag, setActiveDrag] = useState(null);
+
+  // State for double-clicked cell patents viewer
+  const [selectedCellPatents, setSelectedCellPatents] = useState(null);
+  const lastClickRef = useRef({ time: 0, x: null, y: null });
+
+  const handlePlotClick = useCallback((eventData) => {
+    if (!eventData || !eventData.points || eventData.points.length === 0) return;
+    const point = eventData.points[0];
+    const now = Date.now();
+    const lastClick = lastClickRef.current;
+
+    // Detect double click (less than 300ms) on the same cell
+    if (now - lastClick.time < 300 && lastClick.x === point.x && lastClick.y === point.y) {
+      const targetX = point.x;
+      const targetY = point.y;
+
+      // Find matching patents
+      const matchedPatents = patents.filter(p => {
+        const dimValues = xAxisDims.map(d => normalizeDimensionValue(p[d]));
+        const xs = cartesianProduct(dimValues).map(combo => combo.join(' > '));
+        const ys = normalizeDimensionValue(p[yAxisDim]);
+        return xs.includes(targetX) && ys.includes(targetY);
+      });
+
+      // Deduplicate by patent publication number
+      const uniquePatents = Array.from(
+        new Map(matchedPatents.map(p => [p["專利公開公告號"], p])).values()
+      );
+
+      if (uniquePatents.length > 0) {
+        setSelectedCellPatents({
+          xLabel: targetX,
+          yLabel: targetY,
+          patents: uniquePatents
+        });
+      }
+    }
+
+    lastClickRef.current = {
+      time: now,
+      x: point.x,
+      y: point.y
+    };
+  }, [patents, xAxisDims, yAxisDim]);
 
   const captureImage = useCallback(async () => {
     if (heatmapContainerRef.current) {
@@ -347,10 +395,6 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   }, [captureImage, onCaptureReady]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  // Derive readable state
-  const xAxisDims = zones.xAxis;
-  const yAxisDim = zones.yAxis[0] || null;
 
   // Compute raw matrix
   const rawMatrix = useMemo(() => {
@@ -514,7 +558,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         overflow: 'hidden',
         background: theme === 'dark' ? '#0f172a' : '#ffffff',
         color: theme === 'dark' ? '#cbd5e1' : '#1e293b',
-        transition: 'all 0.3s ease'
+        transition: 'all 0.3s ease',
+        position: 'relative'
       }}>
 
         {/* ── Left Sidebar: Axis Configuration ── */}
@@ -705,7 +750,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.7)',
             lineHeight: 1.6
           }}>
-            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>專利件數：</strong>{patents.length}</div>
+            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>專利分類總數：</strong>{patents.length}</div>
             <div>📐 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>全矩陣：</strong>{rawMatrix.x.length} × {rawMatrix.y.length}</div>
             {!showEmpty && (removedCols > 0 || removedRows > 0) && (
               <div style={{ color: 'rgba(251,191,36,0.7)', fontSize: '0.68rem' }}>
@@ -870,13 +915,163 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   },
                   annotations: cellAnnotations
                 }}
-                config={{ responsive: true, displayModeBar: false }}
+                config={{ responsive: true, displayModeBar: false, doubleClick: false }}
+                onClick={handlePlotClick}
                 useResizeHandler={true}
                 style={{ width: '100%', height: '100%' }}
               />
             )}
           </div>
         </div>
+
+        {/* Patent details slide-out panel */}
+        {selectedCellPatents && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '450px',
+            height: '100%',
+            background: theme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+            borderLeft: `1px solid ${theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(14, 165, 233, 0.2)'}`,
+            zIndex: 20,
+            backdropFilter: 'blur(10px)',
+            color: theme === 'dark' ? '#f1f5f9' : '#1e293b',
+            boxShadow: theme === 'dark' ? '-10px 0 20px rgba(0,0,0,0.5)' : '-10px 0 20px rgba(0,0,0,0.1)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            transition: 'all 0.3s ease'
+          }}>
+
+            {/* Sticky Header Section */}
+            <div style={{
+              background: theme === 'dark' ? 'rgba(15, 23, 42, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              zIndex: 30,
+              padding: '1.5rem 1.5rem 0.5rem 1.5rem',
+              borderBottom: `1px solid ${theme === 'dark' ? 'rgba(14, 165, 233, 0.2)' : 'rgba(14, 165, 233, 0.1)'}`
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+                <h3 style={{
+                  fontSize: '1.2rem',
+                  color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                  margin: 0,
+                  fontWeight: '700'
+                }}>
+                  📊 專利分類詳情
+                </h3>
+                <button
+                  onClick={() => setSelectedCellPatents(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: '1.5rem',
+                    lineHeight: 1,
+                    padding: '0.2rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%'
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Labels and Patent Count */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                <div style={{ fontSize: '0.85rem' }}>
+                  <span style={{ fontWeight: '600', color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>X軸分類標籤：</span>
+                  <span style={{
+                    fontSize: '0.8rem',
+                    background: theme === 'dark' ? 'rgba(14, 165, 233, 0.15)' : 'rgba(14, 165, 233, 0.08)',
+                    color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                    borderRadius: '0.3rem',
+                    padding: '0.15rem 0.4rem',
+                    display: 'inline-block',
+                    marginTop: '0.2rem',
+                    border: `1px solid ${theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(14, 165, 233, 0.15)'}`
+                  }}>
+                    {selectedCellPatents.xLabel}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.85rem' }}>
+                  <span style={{ fontWeight: '600', color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Y軸分類標籤：</span>
+                  <span style={{
+                    fontSize: '0.8rem',
+                    background: theme === 'dark' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(168, 85, 247, 0.08)',
+                    color: theme === 'dark' ? '#c084fc' : '#9333ea',
+                    borderRadius: '0.3rem',
+                    padding: '0.15rem 0.4rem',
+                    display: 'inline-block',
+                    marginTop: '0.2rem',
+                    border: `1px solid ${theme === 'dark' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.15)'}`
+                  }}>
+                    {selectedCellPatents.yLabel}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
+                  <span style={{ fontWeight: '600', color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>專利數量：</span>
+                  <span style={{
+                    fontWeight: '700',
+                    color: theme === 'dark' ? '#10b981' : '#059669',
+                    background: theme === 'dark' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.08)',
+                    borderRadius: '0.3rem',
+                    padding: '0.15rem 0.5rem',
+                    fontSize: '0.8rem'
+                  }}>
+                    {selectedCellPatents.patents.length} 件
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Patent Content Section */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+              {selectedCellPatents.patents.map((p, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: '1.2rem',
+                    background: theme === 'dark' ? 'rgba(14, 165, 233, 0.03)' : 'rgba(14, 165, 233, 0.01)',
+                    marginBottom: '1rem',
+                    borderRadius: '0.6rem',
+                    border: `1px solid ${theme === 'dark' ? 'rgba(14, 165, 233, 0.12)' : 'rgba(14, 165, 233, 0.08)'}`,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <h4 style={{
+                    color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                    margin: '0 0 0.8rem 0',
+                    fontSize: '1.05rem',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}>
+                    🔖 {p['專利公開公告號'] || '無號碼'}
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    <p style={{ fontSize: '0.88rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.6' }}>
+                      <strong style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'block', marginBottom: '0.2rem' }}>💡 AI 技術簡述:</strong>
+                      {p['AI技術簡述']}
+                    </p>
+                    <p style={{ fontSize: '0.88rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.6' }}>
+                      <strong style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'block', marginBottom: '0.2rem' }}>⚙️ 技術特徵手段:</strong>
+                      {p['技術特徵手段']}
+                    </p>
+                    <p style={{ fontSize: '0.88rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.6' }}>
+                      <strong style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'block', marginBottom: '0.2rem' }}>✅ 解決問題/效益:</strong>
+                      {p['解決的技術問題或技術效益']}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Drag overlay ghost chip */}

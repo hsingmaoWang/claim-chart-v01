@@ -1324,7 +1324,7 @@ async def ai_assist_criteria(req: AIAssistCriteriaRequest):
         
         type_names = {
             "fishbone": "技術魚骨1-2階節點",
-            "di_query": "DI檢索式",
+            "di_query": "DI檢索式 (Derwent Innovation)",
             "keywords": "技術Keywords"
         }
         type_name = type_names.get(req.criteria_type, req.criteria_type)
