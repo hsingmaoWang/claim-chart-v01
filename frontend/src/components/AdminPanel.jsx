@@ -77,6 +77,7 @@ function UsersTab({ getAuthHeaders }) {
       const body = {};
       if (editTarget.newPassword) body.password = editTarget.newPassword;
       body.role = editTarget.role;
+      body.notes = editTarget.notes ?? '';
       const res = await fetch(`${API_BASE}/api/admin/users/${editTarget.username}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -201,6 +202,28 @@ function UsersTab({ getAuthHeaders }) {
             <button type="submit" style={s.btnBlue}>儲存</button>
             <button type="button" style={s.btnGhost} onClick={() => { setEditTarget(null); setShowEditPassword(false); }}>取消</button>
           </div>
+          <div style={{ marginTop: '0.75rem' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: 'rgba(148,163,184,0.9)', marginBottom: '0.35rem', letterSpacing: '0.04em', textTransform: 'uppercase' }}>備註</label>
+            <textarea
+              style={{
+                width: '100%',
+                minHeight: '72px',
+                padding: '0.55rem 0.85rem',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '0.5rem',
+                color: 'white',
+                fontSize: '0.875rem',
+                fontFamily: "'Outfit', system-ui, sans-serif",
+                outline: 'none',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+              }}
+              placeholder="輸入備註（僅管理者可見）"
+              value={editTarget.notes || ''}
+              onChange={e => setEditTarget(p => ({ ...p, notes: e.target.value }))}
+            />
+          </div>
         </form>
       )}
 
@@ -209,7 +232,7 @@ function UsersTab({ getAuthHeaders }) {
         <table style={s.table}>
           <thead>
             <tr>
-              {['帳號', '角色', '操作'].map(h => <th key={h} style={s.th}>{h}</th>)}
+              {['帳號', '角色', '備註', '操作'].map(h => <th key={h} style={s.th}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -226,9 +249,14 @@ function UsersTab({ getAuthHeaders }) {
                     {u.role === 'admin' ? '系統管理者' : '一般使用者'}
                   </span>
                 </td>
+                <td style={{ ...s.td, maxWidth: '220px' }}>
+                  <span style={{ fontSize: '0.8rem', color: u.notes ? 'rgba(186,230,253,0.75)' : 'rgba(100,116,139,0.6)', fontStyle: u.notes ? 'normal' : 'italic', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {u.notes || '—'}
+                  </span>
+                </td>
                 <td style={s.td}>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button style={s.btnSmallBlue} onClick={() => { setEditTarget({ ...u, newPassword: '' }); setShowAddForm(false); setShowEditPassword(false); }}>編輯</button>
+                    <button style={s.btnSmallBlue} onClick={() => { setEditTarget({ ...u, newPassword: '', notes: u.notes || '' }); setShowAddForm(false); setShowEditPassword(false); }}>編輯</button>
                     <button style={s.btnSmallRed} onClick={() => handleDelete(u.username)}>刪除</button>
                   </div>
                 </td>

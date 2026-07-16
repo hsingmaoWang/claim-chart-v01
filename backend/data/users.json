@@ -13,5 +13,80 @@
         "password_hash": "fadda07eefde9121a85dd023f60b1b35a9be0d3a47e3bf76e7c8fc282cdb09ee",
         "salt": "194fdc9e7d52ee3e78553c58b586a64a",
         "role": "user"
+    },
+    "cc_chang": {
+        "password_hash": "2021310968c531b286b64e9f2473155f71dc2a4b56dc4d16c643f0b2c949831c",
+        "salt": "e85ed273369a876f87b47aadacf34527",
+        "role": "user"
+    },
+    "CFHsieh": {
+        "password_hash": "62c32ae641876f6c663b652445a40f1493dc4ceafc26de1269620923e8ad99c9",
+        "salt": "b36baad975f59e557d5e16ec21fba239",
+        "role": "user"
+    },
+    "PeiggySu": {
+        "password_hash": "bc34ddbc933a45c7298f36071b101269d518ccefc97e37476e1297288f385782",
+        "salt": "1e0fa03bf54806275f154560a75c1dea",
+        "role": "user"
+    },
+    "chiawenlee": {
+        "password_hash": "12ec5b690612aefc7496de16da8807b9a205369f9c1c0108c6c62fa679c9b4d1",
+        "salt": "0b5c3ffb35a77c1296d0e347fbd86dfd",
+        "role": "user"
+    },
+    "rich543": {
+        "password_hash": "bbbc966175677fd8debff585582f9fba338c2c176910e432d60d095ede3d2961",
+        "salt": "e3b71cbd727c71f906018f1eb68a1cee",
+        "role": "user"
+    },
+    "WeberChen": {
+        "password_hash": "f84701d993564c0245f4064c3c1a58e01a1880c2026f0837fdfe1ff54ee2b607",
+        "salt": "a00fff177c740f8f90ccaedd6ef379fa",
+        "role": "user"
+    },
+    "PHWu": {
+        "password_hash": "cd0c7757eaf14e7448f3b83929441493ac40a29e30a7edec2e251d2c84078fcd",
+        "salt": "58c64759029765ff899c66b5a40ac43d",
+        "role": "user"
+    },
+    "TWLin": {
+        "password_hash": "250baf2e079990ed9e517871515dfa445024cbaff5d6ec53aabd22445fe91800",
+        "salt": "10ab819214086f9374372d5352f458e7",
+        "role": "user"
+    },
+    "ot": {
+        "password_hash": "c7cc21ef428552f94be516a50f102edb956c51b7f851f2616b387ef69e16410f",
+        "salt": "a7010b1413ef317dc81d092c539027bd",
+        "role": "user"
+    },
+    "jjchen20547": {
+        "password_hash": "1d9ef6b9e9ded98b4a8affae9f9a09ae15ccacaf80b730601972445cfec457d7",
+        "salt": "c897f3211cdade0f47844e5d4b9826a0",
+        "role": "user"
+    },
+    "warishuang": {
+        "password_hash": "1c97779080a9067d9312ee684186b0d406710ecefb11e85717f8abcbf396aaac",
+        "salt": "a4b39e1c941f6f626479a8e8f349bc48",
+        "role": "user"
+    },
+    "itri535597": {
+        "password_hash": "6821a76cb10391af422f35f3c39b1c12306973a36225016d7123805557f9ddf1",
+        "salt": "b53bbcdad5ce1dd47db25baeb1482d02",
+        "role": "user"
+    },
+    "YKFu": {
+        "password_hash": "da7b9b0fb390dc204eaa6f5a465fdb5d1424bdef62350fae6ee2b92832e37072",
+        "salt": "19eaf5498fb57d8ebaa2aa4f9297aa8c",
+        "role": "user"
+    },
+    "jumbo": {
+        "password_hash": "6cfb904cbc8968304d63b037869a34527d1f2e1a8781d7dd6cf35be7ea275b23",
+        "salt": "3d3ef46c0db37dbf94a7eca3745767d7",
+        "role": "user"
+    },
+    "SelenaLin": {
+        "password_hash": "3c288aa0fabd32b232626a12f5210c1c1c880aa354c04d558476a38079449b09",
+        "salt": "ed7229d37077d78fdf87c90bfbbccd92",
+        "role": "user"
     }
 }

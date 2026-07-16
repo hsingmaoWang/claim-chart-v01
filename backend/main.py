@@ -87,6 +87,7 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRequest(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
+    notes: Optional[str] = None
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
@@ -212,7 +213,7 @@ async def admin_list_users(current_admin: dict = Depends(get_current_admin)):
     # Return without password hashes
     return {
         "users": [
-            {"username": k, "role": v.get("role", "user")}
+            {"username": k, "role": v.get("role", "user"), "notes": v.get("notes", "")}
             for k, v in users.items()
         ]
     }
@@ -259,6 +260,9 @@ async def admin_update_user(
     
     if data.role:
         users[username]["role"] = data.role
+
+    if data.notes is not None:
+        users[username]["notes"] = data.notes
     
     if not save_users(users):
         raise HTTPException(status_code=500, detail="Failed to save user data.")
