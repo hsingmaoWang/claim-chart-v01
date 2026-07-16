@@ -42,6 +42,12 @@ function UsersTab({ getAuthHeaders }) {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/users`, { headers: getAuthHeaders() });
+      if (!res.ok) {
+        const d = await res.json();
+        setFeedback(`載入失敗：${d.detail || '登入已過期，請重新登入。'}`);
+        setUsers([]);
+        return;
+      }
       const data = await res.json();
       setUsers(data.users || []);
     } catch { setFeedback('載入使用者失敗。'); }
@@ -280,6 +286,12 @@ function LogsTab({ getAuthHeaders }) {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/logs`, { headers: getAuthHeaders() });
+      if (!res.ok) {
+        const d = await res.json();
+        setFeedback(`載入失敗：${d.detail || '登入已過期，請重新登入。'}`);
+        setLogs([]);
+        return;
+      }
       const data = await res.json();
       setLogs(data.logs || []);
     } catch { setFeedback('載入日誌失敗。'); }
