@@ -18,8 +18,12 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/assets/(.*)", "dest": "/frontend/assets/$1" },
+    { "src": "/images/(.*)", "dest": "/frontend/images/$1" },
+    { "src": "/favicon.svg", "dest": "/frontend/favicon.svg" },
+    { "src": "/icons.svg", "dest": "/frontend/icons.svg" },
     { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/frontend/$1" }
+    { "src": "/(.*)", "dest": "/frontend/index.html" }
   ]
 }
 
