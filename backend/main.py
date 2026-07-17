@@ -293,23 +293,37 @@ async def admin_delete_user(
 @app.get("/api/admin/logs")
 async def admin_get_logs(current_admin: dict = Depends(get_current_admin)):
     """Read all usage logs (admin only)."""
-    from logger_handler import read_all_logs_from_excel, excel_lock
-    async with excel_lock:
+    from logger_handler import read_all_logs_from_excel, excel_lock, is_supabase_enabled
+    if is_supabase_enabled():
         df = await read_all_logs_from_excel()
+    else:
+        async with excel_lock:
+            df = await read_all_logs_from_excel()
     records = df.fillna("").to_dict(orient="records")
     return {"logs": records}
 
 @app.get("/api/admin/logs/download")
 async def admin_download_logs(current_admin: dict = Depends(get_current_admin)):
-    """Download usage_logs.xlsx (admin only)."""
-    from logger_handler import LOGS_EXCEL
-    if not os.path.exists(LOGS_EXCEL):
-        raise HTTPException(status_code=404, detail="Log file does not exist yet.")
-    return FileResponse(
-        path=LOGS_EXCEL,
-        filename="usage_logs.xlsx",
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    """Download usage_logs.xlsx (admin only) - generated from Supabase or local file."""
+    from logger_handler import read_all_logs_from_excel, excel_lock, is_supabase_enabled, LOGS_EXCEL
+    if is_supabase_enabled():
+        # Generate xlsx on-the-fly in /tmp (writable on Vercel)
+        df = await read_all_logs_from_excel()
+        tmp_path = os.path.join(tempfile.gettempdir(), "usage_logs_export.xlsx")
+        await asyncio.to_thread(df.to_excel, tmp_path, index=False)
+        return FileResponse(
+            path=tmp_path,
+            filename="usage_logs.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        if not os.path.exists(LOGS_EXCEL):
+            raise HTTPException(status_code=404, detail="Log file does not exist yet.")
+        return FileResponse(
+            path=LOGS_EXCEL,
+            filename="usage_logs.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 @app.post("/api/process/pdf")
 async def process_pdf(
