@@ -750,7 +750,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.7)',
             lineHeight: 1.6
           }}>
-            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>專利分類總筆數：</strong>{patents.length}</div>
+            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>專利分類總數：</strong>{patents.length}</div>
             <div>📐 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>全矩陣：</strong>{rawMatrix.x.length} × {rawMatrix.y.length}</div>
             {!showEmpty && (removedCols > 0 || removedRows > 0) && (
               <div style={{ color: 'rgba(251,191,36,0.7)', fontSize: '0.68rem' }}>
