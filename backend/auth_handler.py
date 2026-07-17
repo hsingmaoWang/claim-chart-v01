@@ -177,7 +177,7 @@ def save_users(users: dict) -> bool:
             
             if payload:
                 res_upsert = requests.post(
-                    f"{SUPABASE_URL}/rest/v1/users",
+                    f"{SUPABASE_URL}/rest/v1/users?on_conflict=username",
                     json=payload,
                     headers=headers,
                     timeout=10

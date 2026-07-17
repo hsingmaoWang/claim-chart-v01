@@ -104,14 +104,14 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
                 "Session ID": r.get("session_id"),
                 "Username": r.get("username"),
                 "IP Address": r.get("ip_address"),
-                "Login Time": r.get("login_time"),
-                "Logout Time": r.get("logout_time", ""),
+                "Login Time": r.get("login_time") or "",
+                "Logout Time": r.get("logout_time") or "",
                 "Duration": r.get("duration", "00:00:00"),
                 "Uploaded Files": files_str,
                 "Patents Processed": r.get("patents_processed", 0),
                 "Excel Downloads": r.get("excel_downloads", 0),
                 "PNG Downloads": r.get("png_downloads", 0),
-                "Last Active Time": r.get("last_active_time"),
+                "Last Active Time": r.get("last_active_time") or "",
                 "Status": r.get("status", "active")
             })
         return pd.DataFrame(excel_rows)
@@ -163,19 +163,19 @@ async def sync_log_to_supabase(session_id: str, record: dict):
             "session_id": record.get("session_id"),
             "username": record.get("username"),
             "ip_address": record.get("ip_address"),
-            "login_time": record.get("login_time"),
-            "logout_time": record.get("logout_time", ""),
+            "login_time": record.get("login_time") or None,
+            "logout_time": record.get("logout_time") or None,
             "duration": record.get("duration", "00:00:00"),
             "uploaded_files": record.get("uploaded_files", []),
             "patents_processed": record.get("patents_processed", 0),
             "excel_downloads": record.get("excel_downloads", 0),
             "png_downloads": record.get("png_downloads", 0),
-            "last_active_time": record.get("last_active_time"),
+            "last_active_time": record.get("last_active_time") or None,
             "status": record.get("status", "active")
         }
         
         def do_post():
-            res = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs", json=db_row, headers=headers, timeout=10)
+            res = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs?on_conflict=session_id", json=db_row, headers=headers, timeout=10)
             res.raise_for_status()
             
         await asyncio.to_thread(do_post)
@@ -258,14 +258,14 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
                     "session_id": session_id,
                     "username": str(row.get("username", "unknown")),
                     "ip_address": str(row.get("ip_address", "unknown")),
-                    "login_time": str(row.get("login_time", "")),
-                    "logout_time": str(row.get("logout_time", "")),
+                    "login_time": row.get("login_time"),
+                    "logout_time": row.get("logout_time"),
                     "duration": str(row.get("duration", "00:00:00")),
                     "uploaded_files": files_list,
                     "patents_processed": int(row.get("patents_processed", 0)),
                     "excel_downloads": int(row.get("excel_downloads", 0)),
                     "png_downloads": int(row.get("png_downloads", 0)),
-                    "last_active_time": str(row.get("last_active_time", "")),
+                    "last_active_time": row.get("last_active_time"),
                     "status": str(row.get("status", "active"))
                 }
                 active_logs[session_id] = record

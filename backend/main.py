@@ -290,6 +290,51 @@ async def admin_delete_user(
     logger.info(f"Admin '{current_admin['username']}' deleted user '{username}'.")
     return {"message": f"User '{username}' deleted successfully."}
 
+@app.get("/api/admin/supabase_test")
+async def admin_supabase_test():
+    """Debug endpoint to test Supabase connection and environment variables."""
+    import os
+    import requests
+    
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    
+    status_info = {
+        "supabase_url_configured": bool(url),
+        "supabase_key_configured": bool(key),
+        "supabase_url_prefix": url[:15] + "..." if url else None,
+        "supabase_key_prefix": key[:15] + "..." if key else None,
+        "users_test": {},
+        "logs_test": {}
+    }
+    
+    if url and key:
+        headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}"
+        }
+        # Test users table
+        try:
+            res = requests.get(f"{url}/rest/v1/users?limit=1", headers=headers, timeout=5)
+            status_info["users_test"] = {
+                "status_code": res.status_code,
+                "response_preview": res.text[:200]
+            }
+        except Exception as e:
+            status_info["users_test"] = {"error": str(e)}
+            
+        # Test usage_logs table
+        try:
+            res = requests.get(f"{url}/rest/v1/usage_logs?limit=1", headers=headers, timeout=5)
+            status_info["logs_test"] = {
+                "status_code": res.status_code,
+                "response_preview": res.text[:200]
+            }
+        except Exception as e:
+            status_info["logs_test"] = {"error": str(e)}
+    
+    return status_info
+
 @app.get("/api/admin/logs")
 async def admin_get_logs(current_admin: dict = Depends(get_current_admin)):
     """Read all usage logs (admin only)."""
