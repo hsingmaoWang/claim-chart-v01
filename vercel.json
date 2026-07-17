@@ -10,18 +10,16 @@
     },
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxDuration": 300
+      }
     }
   ],
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 300
-    }
-  },
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.py" },
     { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/frontend/$1" }
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
 
