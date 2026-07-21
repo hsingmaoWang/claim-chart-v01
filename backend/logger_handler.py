@@ -60,19 +60,83 @@ try:
 except Exception:
     pass
 
+def parse_datetime(val) -> Optional[datetime]:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    if hasattr(val, "to_pydatetime"):
+        return val.to_pydatetime()
+        
+    val_str = str(val).strip()
+    if not val_str or val_str.lower() in ("—", "none", "null", "nan", "nat"):
+        return None
+        
+    if val_str.endswith('Z') or val_str.endswith('z'):
+        val_str = val_str[:-1] + '+00:00'
+        
+    try:
+        return datetime.fromisoformat(val_str)
+    except ValueError:
+        pass
+        
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S.%f",
+    ):
+        try:
+            return datetime.strptime(val_str, fmt)
+        except ValueError:
+            continue
+            
+    return None
+
 def calculate_duration(start_time_str: str, end_time_str: str) -> str:
     """Calculate HH:MM:SS duration between two ISO format datetime strings."""
     try:
-        start = datetime.fromisoformat(start_time_str)
-        end = datetime.fromisoformat(end_time_str)
+        start = parse_datetime(start_time_str)
+        end = parse_datetime(end_time_str)
+        if not start or not end:
+            return "00:00:00"
+            
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
+        else:
+            start = start.astimezone(timezone.utc)
+            
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
+        else:
+            end = end.astimezone(timezone.utc)
+            
         delta = end - start
-        
-        # Format as HH:MM:SS
         total_seconds = int(delta.total_seconds())
+        
+        # Get machine local timezone offset
+        try:
+            local_offset = datetime.now().astimezone().utcoffset()
+            local_offset_seconds = int(local_offset.total_seconds()) if local_offset else 0
+        except Exception:
+            local_offset_seconds = 28800  # Default to Taiwan / GMT+8 if offset check fails
+            
+        # Adjust for timezone offset mismatches (e.g. naive time treated as UTC)
+        if local_offset_seconds > 0:
+            if total_seconds < 0 and total_seconds + local_offset_seconds >= 0:
+                total_seconds += local_offset_seconds
+            elif total_seconds >= local_offset_seconds:
+                # If duration is extremely large (e.g. > local offset) and subtracting offset is still positive,
+                # it's likely a mismatch where end time was treated as UTC but was local, or start was UTC and end was local.
+                # Check if the adjusted duration is within a reasonable limit (e.g., less than 2 hours)
+                if total_seconds - local_offset_seconds < 7200:
+                    total_seconds -= local_offset_seconds
+                    
+        if total_seconds < 0:
+            total_seconds = 0
+            
         hours = total_seconds // 3600
         minutes = (total_seconds % 3600) // 60
         seconds = total_seconds % 60

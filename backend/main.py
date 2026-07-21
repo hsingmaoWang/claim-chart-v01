@@ -352,7 +352,13 @@ def to_taiwan_time_str(iso_str: str) -> str:
         return "—"
     try:
         from datetime import datetime, timezone, timedelta
-        dt = datetime.fromisoformat(iso_str)
+        s = str(iso_str).strip()
+        
+        # If it already looks like a formatted Taiwan time string (e.g. YYYY-MM-DD HH:MM:SS), return it as is
+        if " " in s and "T" not in s and "Z" not in s.upper() and "+" not in s and "-" not in s[s.find(" "):]:
+            return s
+            
+        dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         tz_tw = timezone(timedelta(hours=8))

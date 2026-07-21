@@ -36,7 +36,7 @@ function App() {
   // ── Main app state ──────────────────────────────────────────
   const [appState, setAppState] = useState('idle'); // idle, processing, complete, error
   const [errorMessage, setErrorMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('claimChart');
+  const [activeTab, setActiveTab] = useState('mindMap');
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -384,18 +384,18 @@ function App() {
           ))}
         </div>
         <button
-          className={activeTab === 'claimChart' ? 'btn-primary' : 'btn-secondary'}
-          onClick={() => setActiveTab('claimChart')}
-          style={{ width: '150px', padding: '1rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
-        >
-          Claim Chart
-        </button>
-        <button
           className={activeTab === 'mindMap' ? 'btn-primary' : 'btn-secondary'}
           onClick={() => setActiveTab('mindMap')}
           style={{ width: '150px', padding: '1rem', borderRadius: '0.5rem', fontWeight: 'bold', wordWrap: 'break-word', whiteSpace: 'normal', lineHeight: '1.2' }}
         >
           專利類別心智圖
+        </button>
+        <button
+          className={activeTab === 'claimChart' ? 'btn-primary' : 'btn-secondary'}
+          onClick={() => setActiveTab('claimChart')}
+          style={{ width: '150px', padding: '1rem', borderRadius: '0.5rem', fontWeight: 'bold' }}
+        >
+          Claim Chart
         </button>
       </div>
 
