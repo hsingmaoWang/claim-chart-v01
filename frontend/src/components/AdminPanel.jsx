@@ -2,6 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = '';
 
+const formatDateTime = (val) => {
+  if (!val || val === '—') return '—';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return val;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch (e) {
+    return val;
+  }
+};
+
 function ModalOverlay({ children }) {
   return (
     <div style={s.overlay}>
@@ -360,7 +372,9 @@ function LogsTab({ getAuthHeaders }) {
                     <td key={c.key} style={{ ...s.td, fontSize: '0.78rem', ...(c.short ? { maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>
                       {c.key === 'Session ID'
                         ? <span title={row[c.key]}>{String(row[c.key] || '').slice(0, 8)}…</span>
-                        : String(row[c.key] || '—')}
+                        : (c.key === 'Login Time' || c.key === 'Logout Time')
+                          ? formatDateTime(row[c.key])
+                          : String(row[c.key] || '—')}
                     </td>
                   ))}
                 </tr>

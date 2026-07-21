@@ -347,28 +347,45 @@ async def admin_get_logs(current_admin: dict = Depends(get_current_admin)):
     records = df.fillna("").to_dict(orient="records")
     return {"logs": records}
 
+def to_taiwan_time_str(iso_str: str) -> str:
+    if not iso_str or iso_str == "—":
+        return "—"
+    try:
+        from datetime import datetime, timezone, timedelta
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        tz_tw = timezone(timedelta(hours=8))
+        dt_tw = dt.astimezone(tz_tw)
+        return dt_tw.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return iso_str
+
 @app.get("/api/admin/logs/download")
 async def admin_download_logs(current_admin: dict = Depends(get_current_admin)):
     """Download usage_logs.xlsx (admin only) - generated from Supabase or local file."""
     from logger_handler import read_all_logs_from_excel, excel_lock, is_supabase_enabled, LOGS_EXCEL
+    import pandas as pd
+    
     if is_supabase_enabled():
-        # Generate xlsx on-the-fly in /tmp (writable on Vercel)
         df = await read_all_logs_from_excel()
-        tmp_path = os.path.join(tempfile.gettempdir(), "usage_logs_export.xlsx")
-        await asyncio.to_thread(df.to_excel, tmp_path, index=False)
-        return FileResponse(
-            path=tmp_path,
-            filename="usage_logs.xlsx",
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
     else:
-        if not os.path.exists(LOGS_EXCEL):
-            raise HTTPException(status_code=404, detail="Log file does not exist yet.")
-        return FileResponse(
-            path=LOGS_EXCEL,
-            filename="usage_logs.xlsx",
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        async with excel_lock:
+            df = await read_all_logs_from_excel()
+            
+    # Convert "Login Time" and "Logout Time" to Taiwan time string for Excel download
+    for col in ["Login Time", "Logout Time"]:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: to_taiwan_time_str(str(x)) if pd.notna(x) and str(x).strip() and str(x) != "—" else x)
+            
+    tmp_path = os.path.join(tempfile.gettempdir(), f"usage_logs_export_{uuid.uuid4()}.xlsx")
+    await asyncio.to_thread(df.to_excel, tmp_path, index=False)
+    
+    return FileResponse(
+        path=tmp_path,
+        filename="usage_logs.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 @app.post("/api/process/pdf")
 async def process_pdf(

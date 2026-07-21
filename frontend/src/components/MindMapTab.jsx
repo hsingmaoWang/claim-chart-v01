@@ -788,7 +788,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             onDrop={handleDrop}
           >
             <Upload size={52} color={isDragging ? 'var(--color-secondary)' : 'var(--color-text)'} style={{ marginBottom: '1rem' }} />
-            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.8rem' }}>Upload Patent Data for Mind Map</h2>
+            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.8rem' }}>Upload Excel Data for Patent Map</h2>
             <p style={{ color: 'var(--color-text-muted)', marginBottom: '2rem' }}>Drag and drop your file here, or click to browse. Excel formats are supported.</p>
             <div>
               <label className="btn-primary" style={{ cursor: 'pointer', display: 'inline-flex', padding: '0.75rem 2rem', borderRadius: '0.75rem', background: 'var(--color-primary)', color: 'white', fontWeight: 'bold' }}>

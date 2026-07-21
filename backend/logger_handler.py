@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import asyncio
 import requests
@@ -65,6 +65,10 @@ def calculate_duration(start_time_str: str, end_time_str: str) -> str:
     try:
         start = datetime.fromisoformat(start_time_str)
         end = datetime.fromisoformat(end_time_str)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
         delta = end - start
         
         # Format as HH:MM:SS
@@ -309,7 +313,7 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
 
 async def log_login(session_id: str, username: str, ip_address: str):
     """Log user login event."""
-    now_str = datetime.now().isoformat()
+    now_str = datetime.now(timezone.utc).isoformat()
     record = {
         "session_id": session_id,
         "username": username,
@@ -332,7 +336,7 @@ async def log_heartbeat(session_id: str):
     """Update last active time for the session."""
     record = await get_or_restore_log_record(session_id)
     if record:
-        now_str = datetime.now().isoformat()
+        now_str = datetime.now(timezone.utc).isoformat()
         record["last_active_time"] = now_str
         # We don't sync heartbeats to Excel immediately to avoid high disk IO
         # The background cleaner or final logout will sync this.
@@ -341,7 +345,7 @@ async def log_logout(session_id: str):
     """Log user logout event."""
     record = await get_or_restore_log_record(session_id)
     if record:
-        now_str = datetime.now().isoformat()
+        now_str = datetime.now(timezone.utc).isoformat()
         record["logout_time"] = now_str
         record["last_active_time"] = now_str
         record["duration"] = calculate_duration(record["login_time"], now_str)
@@ -356,7 +360,7 @@ async def log_unload(session_id: str):
     """Log user tab/window close event (BeforeUnload)."""
     record = await get_or_restore_log_record(session_id)
     if record:
-        now_str = datetime.now().isoformat()
+        now_str = datetime.now(timezone.utc).isoformat()
         record["logout_time"] = now_str
         record["last_active_time"] = now_str
         record["duration"] = calculate_duration(record["login_time"], now_str)
@@ -405,12 +409,14 @@ async def clean_expired_sessions(timeout_seconds: int = 60):
     If last_active_time is older than timeout_seconds, mark it as timeout,
     write duration to Excel, and remove it from active memory.
     """
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     expired_session_ids = []
     
     for session_id, record in list(active_logs.items()):
         try:
             last_active = datetime.fromisoformat(record["last_active_time"])
+            if last_active.tzinfo is None:
+                last_active = last_active.replace(tzinfo=timezone.utc)
             elapsed = (now - last_active).total_seconds()
             
             if elapsed > timeout_seconds:
