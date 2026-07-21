@@ -62,7 +62,7 @@ export default function LoginView({ onLoginSuccess }) {
       {/* Left brand area */}
       <div style={styles.brandArea}>
         <div style={styles.brandBadge}>AI Powered</div>
-        <h1 style={styles.brandTitle}>Patent Analyzer</h1>
+        <h1 style={styles.brandTitle}>My Patent</h1>
         <p style={styles.brandSubtitle}>
           智慧專利分析平台<br />
           Claim Chart · 分類心智圖 · 全域知識圖譜
