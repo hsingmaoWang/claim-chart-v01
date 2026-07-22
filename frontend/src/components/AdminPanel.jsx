@@ -14,6 +14,15 @@ const formatDateTime = (val) => {
   }
 };
 
+const formatBytes = (bytes) => {
+  const num = Number(bytes);
+  if (!num || isNaN(num) || num === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(num) / Math.log(k));
+  return parseFloat((num / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
 function ModalOverlay({ children }) {
   return (
     <div style={s.overlay}>
@@ -335,8 +344,10 @@ function LogsTab({ getAuthHeaders }) {
     { key: 'Duration', label: '使用時長' },
     { key: 'Uploaded Files', label: '上傳檔案' },
     { key: 'Patents Processed', label: '專利件數' },
-    { key: 'Excel Downloads', label: 'Excel下載' },
-    { key: 'PNG Downloads', label: 'PNG下載' },
+    { key: 'Excel Downloads', label: 'Excel下載次數' },
+    { key: 'Excel Download Size (bytes)', label: 'Excel下載總大小' },
+    { key: 'PNG Downloads', label: 'PNG下載次數' },
+    { key: 'PNG Download Size (bytes)', label: 'PNG下載總大小' },
   ];
 
   return (
@@ -374,7 +385,9 @@ function LogsTab({ getAuthHeaders }) {
                         ? <span title={row[c.key]}>{String(row[c.key] || '').slice(0, 8)}…</span>
                         : (c.key === 'Login Time' || c.key === 'Logout Time')
                           ? formatDateTime(row[c.key])
-                          : String(row[c.key] || '—')}
+                          : (c.key === 'Excel Download Size (bytes)' || c.key === 'PNG Download Size (bytes)')
+                            ? `${formatBytes(row[c.key])} (${Number(row[c.key] || 0).toLocaleString()} B)`
+                            : String(row[c.key] ?? '—')}
                     </td>
                   ))}
                 </tr>

@@ -220,6 +220,15 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       a.download = `preprocessed_${fileInfo.filename}`;
       a.click();
       window.URL.revokeObjectURL(url);
+
+      // Log Excel download usage event (including actual file size)
+      if (authState?.session_id) {
+        fetch('/api/usage/log-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: blob.size })
+        }).catch(err => console.error('Failed to log Excel download', err));
+      }
     } catch (err) {
       console.error(err);
       alert('匯出預處理 Excel 失敗。');
@@ -485,6 +494,15 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       a.download = filename;
       a.click();
       window.URL.revokeObjectURL(url);
+
+      // Log Excel download usage event (including actual file size)
+      if (authState?.session_id) {
+        fetch('/api/usage/log-excel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: blob.size })
+        }).catch(err => console.error('Failed to log Excel download', err));
+      }
     } catch (err) {
       console.error(err);
       alert('Failed to export.');

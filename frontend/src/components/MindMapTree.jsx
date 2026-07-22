@@ -175,12 +175,16 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                 a.download = `markmap_cyber_${timestamp}.png`;
                 a.click();
 
-                // Log PNG download usage event
+                // Log PNG download usage event (including estimated file size)
                 if (authState?.session_id) {
+                    // Estimate PNG size from base64 data URL
+                    const base64Data = image.split(',')[1] || '';
+                    const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
+                    const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
                     fetch('/api/usage/log-png', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ session_id: authState.session_id })
+                        body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
                     }).catch(err => console.error("Failed to log PNG download", err));
                 }
             } catch (err) {

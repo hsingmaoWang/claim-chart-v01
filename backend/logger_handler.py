@@ -39,6 +39,8 @@ def get_empty_log_df() -> pd.DataFrame:
         "Patents Processed",
         "Excel Downloads",
         "PNG Downloads",
+        "Excel Download Size (bytes)",
+        "PNG Download Size (bytes)",
         "Last Active Time",
         "Status"
     ])
@@ -179,6 +181,8 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
                 "Patents Processed": r.get("patents_processed", 0),
                 "Excel Downloads": r.get("excel_downloads", 0),
                 "PNG Downloads": r.get("png_downloads", 0),
+                "Excel Download Size (bytes)": r.get("excel_download_bytes", 0),
+                "PNG Download Size (bytes)": r.get("png_download_bytes", 0),
                 "Last Active Time": r.get("last_active_time") or "",
                 "Status": r.get("status", "active")
             })
@@ -238,6 +242,8 @@ async def sync_log_to_supabase(session_id: str, record: dict):
             "patents_processed": record.get("patents_processed", 0),
             "excel_downloads": record.get("excel_downloads", 0),
             "png_downloads": record.get("png_downloads", 0),
+            "excel_download_bytes": record.get("excel_download_bytes", 0),
+            "png_download_bytes": record.get("png_download_bytes", 0),
             "last_active_time": record.get("last_active_time") or None,
             "status": record.get("status", "active")
         }
@@ -275,6 +281,8 @@ async def sync_log_to_excel(session_id: str, record: dict):
                 "Patents Processed": record.get("patents_processed", 0),
                 "Excel Downloads": record.get("excel_downloads", 0),
                 "PNG Downloads": record.get("png_downloads", 0),
+                "Excel Download Size (bytes)": record.get("excel_download_bytes", 0),
+                "PNG Download Size (bytes)": record.get("png_download_bytes", 0),
                 "Last Active Time": record.get("last_active_time"),
                 "Status": record.get("status", "active")
             }
@@ -333,6 +341,8 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
                     "patents_processed": int(row.get("patents_processed", 0)),
                     "excel_downloads": int(row.get("excel_downloads", 0)),
                     "png_downloads": int(row.get("png_downloads", 0)),
+                    "excel_download_bytes": int(row.get("excel_download_bytes", 0)),
+                    "png_download_bytes": int(row.get("png_download_bytes", 0)),
                     "last_active_time": row.get("last_active_time"),
                     "status": str(row.get("status", "active"))
                 }
@@ -365,6 +375,8 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
                     "patents_processed": int(row.get("Patents Processed", 0) if pd.notna(row.get("Patents Processed")) else 0),
                     "excel_downloads": int(row.get("Excel Downloads", 0) if pd.notna(row.get("Excel Downloads")) else 0),
                     "png_downloads": int(row.get("PNG Downloads", 0) if pd.notna(row.get("PNG Downloads")) else 0),
+                    "excel_download_bytes": int(row.get("Excel Download Size (bytes)", 0) if pd.notna(row.get("Excel Download Size (bytes)")) else 0),
+                    "png_download_bytes": int(row.get("PNG Download Size (bytes)", 0) if pd.notna(row.get("PNG Download Size (bytes)")) else 0),
                     "last_active_time": str(row.get("Last Active Time", "")),
                     "status": str(row.get("Status", "active"))
                 }
@@ -389,6 +401,8 @@ async def log_login(session_id: str, username: str, ip_address: str):
         "patents_processed": 0,
         "excel_downloads": 0,
         "png_downloads": 0,
+        "excel_download_bytes": 0,
+        "png_download_bytes": 0,
         "last_active_time": now_str,
         "status": "active"
     }
@@ -451,18 +465,20 @@ async def increment_patents_processed(session_id: str, count: int = 1):
         record["patents_processed"] += count
         await sync_log_to_excel(session_id, record)
 
-async def increment_excel_downloads(session_id: str):
-    """Increment Excel download count under the active session."""
+async def increment_excel_downloads(session_id: str, file_size_bytes: int = 0):
+    """Increment Excel download count and accumulate total file size under the active session."""
     record = await get_or_restore_log_record(session_id)
     if record:
         record["excel_downloads"] += 1
+        record["excel_download_bytes"] = record.get("excel_download_bytes", 0) + max(0, int(file_size_bytes))
         await sync_log_to_excel(session_id, record)
 
-async def increment_png_downloads(session_id: str):
-    """Increment PNG download count under the active session."""
+async def increment_png_downloads(session_id: str, file_size_bytes: int = 0):
+    """Increment PNG download count and accumulate total file size under the active session."""
     record = await get_or_restore_log_record(session_id)
     if record:
         record["png_downloads"] += 1
+        record["png_download_bytes"] = record.get("png_download_bytes", 0) + max(0, int(file_size_bytes))
         await sync_log_to_excel(session_id, record)
 
 # --- Background Task: Clean Timeout Sessions ---

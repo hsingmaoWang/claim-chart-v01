@@ -78,6 +78,11 @@ class HeartbeatRequest(BaseModel):
 
 class PngLogRequest(BaseModel):
     session_id: str
+    file_size_bytes: int = 0
+
+class ExcelLogRequest(BaseModel):
+    session_id: str
+    file_size_bytes: int = 0
 
 class CreateUserRequest(BaseModel):
     username: str
@@ -199,7 +204,13 @@ async def unload(data: HeartbeatRequest):
 @app.post("/api/usage/log-png")
 async def log_png_download(data: PngLogRequest):
     """Frontend calls this when a PNG download is triggered."""
-    await increment_png_downloads(data.session_id)
+    await increment_png_downloads(data.session_id, data.file_size_bytes)
+    return {"status": "ok"}
+
+@app.post("/api/usage/log-excel")
+async def log_excel_download(data: ExcelLogRequest):
+    """Frontend calls this when an Excel download is triggered."""
+    await increment_excel_downloads(data.session_id, data.file_size_bytes)
     return {"status": "ok"}
 
 # =====================================================
