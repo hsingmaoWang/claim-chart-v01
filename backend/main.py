@@ -6,6 +6,9 @@ import asyncio
 # Ensure local imports work regardless of where uvicorn is run from
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
 import logging
 import shutil
 import uuid

@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 # --- Pydantic Schemas for Structured Outputs ---
 
@@ -49,7 +49,7 @@ def robust_json_decode(text: str):
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-
+ 
     # 2. 使用 json_repair 進行修復並載入
     try:
         repaired_data = json_repair.loads(text)
@@ -57,7 +57,7 @@ def robust_json_decode(text: str):
             return repaired_data
     except Exception:
         pass
-
+ 
     # 3. 備援方案：尋找外層第一個 { 和最後一個 }（針對夾雜無關說明的生成）
     start_idx = text.find('{')
     end_idx = text.rfind('}')
@@ -67,7 +67,7 @@ def robust_json_decode(text: str):
             return json_repair.loads(candidate)
         except Exception:
             pass
-
+ 
     # 4. 針對陣列的備援方案（有些 LLM 回應最外層是 [ ... ]）
     start_arr_idx = text.find('[')
     end_arr_idx = text.rfind(']')
@@ -77,9 +77,9 @@ def robust_json_decode(text: str):
             return json_repair.loads(candidate)
         except Exception:
             pass
-
+ 
     raise ValueError("Could not recover valid JSON from model response.")
-
+ 
 def configure_response_format(response_schema, provider: str):
     """
     為 Gemini Direct 或 OpenRouter 提供 Structured Output / JSON Schema 參數配置
@@ -89,7 +89,7 @@ def configure_response_format(response_schema, provider: str):
             return {"response_format": {"type": "json_object"}}
         else:
             return {"response_mime_type": "application/json"}
-
+ 
     if provider == "openrouter":
         return {
             "response_format": {
@@ -106,7 +106,7 @@ def configure_response_format(response_schema, provider: str):
             "response_mime_type": "application/json",
             "response_schema": response_schema
         }
-
+ 
 def send_openrouter_request(payload: dict, timeout: float = 60.0) -> dict:
     """
     Unified helper to send POST requests to OpenRouter API using truststore and httpx.
@@ -121,8 +121,15 @@ def send_openrouter_request(payload: dict, timeout: float = 60.0) -> dict:
         "Content-Type": "application/json"
     }
     
-    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    with httpx.Client(verify=ctx, timeout=timeout) as http_client:
+    # Use standard SSL verification on Vercel/cloud, truststore on local machine if available
+    verify_param = True
+    if not os.environ.get("VERCEL"):
+        try:
+            verify_param = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        except Exception:
+            pass
+            
+    with httpx.Client(verify=verify_param, timeout=timeout) as http_client:
         response = http_client.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,

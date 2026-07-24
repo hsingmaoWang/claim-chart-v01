@@ -126,7 +126,7 @@ async def safe_query_gemini_with_backoff(prompt, provider, client, response_sche
                         "temperature": 0.1, "max_tokens": 8000,
                         **config_params
                     }
-                    return analyzer.send_openrouter_request(payload, timeout=300.0)
+                    return analyzer.send_openrouter_request(payload, timeout=90.0)
                 resp_data = await asyncio.to_thread(call_api)
                 result = resp_data["choices"][0]["message"]["content"]
                 logger.info(f"[AI API] OpenRouter responded successfully ({len(result)} chars).")
@@ -650,7 +650,8 @@ async def run_preprocess_task(
 ):
     try:
         import dotenv
-        dotenv.load_dotenv(override=True)
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        dotenv.load_dotenv(env_path, override=True)
         provider = os.environ.get("API_PROVIDER", "gemini").lower().strip().replace('"', '').replace("'", "")
         client = get_genai_client() if provider != "openrouter" else None
 
