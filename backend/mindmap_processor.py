@@ -113,10 +113,12 @@ async def safe_query_gemini_with_backoff(prompt, provider, client, response_sche
     帶有指數退避重試的 API 呼叫包裝，支援 JSON Schema 約束。
     使用 asyncio.to_thread 執行同步 SDK 呼叫以避免阻塞事件循環。
     """
+    prompt_preview = str(prompt)[:80].replace('\n', ' ')
     for attempt in range(max_retries):
         try:
             config_params = configure_response_format(response_schema, provider)
             if provider == "openrouter":
+                logger.info(f"[AI API] Calling OpenRouter (attempt {attempt+1}/{max_retries}) | prompt: {prompt_preview}...")
                 def call_api():
                     payload = {
                         "model": "google/gemini-2.5-flash",
@@ -126,8 +128,11 @@ async def safe_query_gemini_with_backoff(prompt, provider, client, response_sche
                     }
                     return analyzer.send_openrouter_request(payload, timeout=300.0)
                 resp_data = await asyncio.to_thread(call_api)
-                return resp_data["choices"][0]["message"]["content"]
+                result = resp_data["choices"][0]["message"]["content"]
+                logger.info(f"[AI API] OpenRouter responded successfully ({len(result)} chars).")
+                return result
             else:
+                logger.info(f"[AI API] Calling Gemini 2.5 Flash (attempt {attempt+1}/{max_retries}) | prompt: {prompt_preview}...")
                 def call_api():
                     config_dict = {
                         "max_output_tokens": 8000,
@@ -139,7 +144,9 @@ async def safe_query_gemini_with_backoff(prompt, provider, client, response_sche
                         config=config_dict
                     )
                 resp = await asyncio.to_thread(call_api)
-                return resp.text
+                result = resp.text
+                logger.info(f"[AI API] Gemini responded successfully ({len(result)} chars).")
+                return result
         except Exception as e:
             wait_time = (2 ** attempt) + 0.5
             logger.warning(f"API call failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time}s...")

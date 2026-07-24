@@ -10,7 +10,7 @@ import logging
 import shutil
 import uuid
 import requests
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Header, Depends, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Header, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
@@ -35,14 +35,18 @@ from logger_handler import (
     session_timeout_cleanup_loop, init_logs_excel, active_logs
 )
 
+from admin_log_stream import attach_admin_log_handler, get_admin_logs
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+attach_admin_log_handler()
 
 # --- Lifespan context manager ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize Excel log file and start background cleanup task
+    attach_admin_log_handler()
     await init_logs_excel()
     cleanup_task = asyncio.create_task(session_timeout_cleanup_loop(interval=30, timeout=300))
     logger.info("Session cleanup background task started.")
@@ -364,6 +368,16 @@ async def admin_get_logs(current_admin: dict = Depends(get_current_admin)):
             
     records = df.fillna("").to_dict(orient="records")
     return {"logs": records}
+
+@app.get("/api/admin/live-logs")
+async def admin_get_live_logs(
+    after_id: int = Query(default=0),
+    current_admin: dict = Depends(get_current_admin)
+):
+    """Retrieve real-time backend execution logs (admin only)."""
+    from admin_log_stream import get_admin_logs
+    logs = get_admin_logs(after_id=after_id)
+    return {"logs": logs}
 
 def to_taiwan_time_str(iso_str: str) -> str:
     if not iso_str or iso_str == "—":

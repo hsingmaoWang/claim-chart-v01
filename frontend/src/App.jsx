@@ -7,6 +7,7 @@ import Loader from './components/Loader'
 import ResultCard from './components/ResultCard'
 import MindMapTab from './components/MindMapTab'
 import ChangePasswordModal from './components/ChangePasswordModal'
+import AdminConsoleModal from './components/AdminConsoleModal'
 
 const API_BASE = '';
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
@@ -29,6 +30,9 @@ function App() {
 
   // ── Admin panel ─────────────────────────────────────────────
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  // ── Admin console modal ──────────────────────────────────────
+  const [showAdminConsole, setShowAdminConsole] = useState(false);
 
   // ── Change password modal ────────────────────────────────────
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -289,23 +293,46 @@ function App() {
         </button>
 
         {isAdmin && (
-          <button
-            id="admin-panel-btn"
-            onClick={() => setShowAdminPanel(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
-              background: 'rgba(139,92,246,0.25)', border: '1px solid rgba(139,92,246,0.45)',
-              color: '#c4b5fd', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
-              transition: 'all 200ms',
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="12" cy="8" r="4" /><path d="M6 20v-2a6 6 0 0 1 12 0v2" />
-              <path d="M19 11h2m-2 4h2M3 11h2m-2 4h2" />
-            </svg>
-            管理項目
-          </button>
+          <>
+            <button
+              id="admin-panel-btn"
+              onClick={() => setShowAdminPanel(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
+                background: 'rgba(139,92,246,0.25)', border: '1px solid rgba(139,92,246,0.45)',
+                color: '#c4b5fd', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 200ms',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <circle cx="12" cy="8" r="4" /><path d="M6 20v-2a6 6 0 0 1 12 0v2" />
+                <path d="M19 11h2m-2 4h2M3 11h2m-2 4h2" />
+              </svg>
+              管理項目
+            </button>
+
+            {/* Admin Execution Console Button */}
+            <button
+              id="admin-console-btn"
+              onClick={() => setShowAdminConsole(true)}
+              title="開啟管理者即時執行控制台"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
+                background: 'rgba(8, 145, 178, 0.25)', border: '1px solid rgba(34, 211, 238, 0.45)',
+                color: '#67e8f9', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 200ms',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <path d="M8 21h8M12 17v4" />
+                <polyline points="6 9 9 12 6 15" /><line x1="12" y1="15" x2="16" y2="15" />
+              </svg>
+              執行控制台
+            </button>
+          </>
         )}
 
         <button
@@ -344,6 +371,14 @@ function App() {
           onClose={() => setShowAdminPanel(false)}
         />
       )}
+
+      {/* Admin Execution Console Modal */}
+      <AdminConsoleModal
+        authState={authState}
+        getAuthHeaders={getAuthHeaders}
+        isOpen={showAdminConsole}
+        onClose={() => setShowAdminConsole(false)}
+      />
 
       {/* Original app layout */}
       <header className="hero">
