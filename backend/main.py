@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup: initialize Excel log file and start background cleanup task
     await init_logs_excel()
-    cleanup_task = asyncio.create_task(session_timeout_cleanup_loop(interval=30, timeout=60))
+    cleanup_task = asyncio.create_task(session_timeout_cleanup_loop(interval=30, timeout=300))
     logger.info("Session cleanup background task started.")
     yield
     # Shutdown: cancel the cleanup task
@@ -67,6 +67,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition"]
 )
+
 
 # --- Auth Pydantic Models ---
 class LoginRequest(BaseModel):
@@ -350,11 +351,17 @@ async def admin_supabase_test():
 async def admin_get_logs(current_admin: dict = Depends(get_current_admin)):
     """Read all usage logs (admin only)."""
     from logger_handler import read_all_logs_from_excel, excel_lock, is_supabase_enabled
+    import pandas as pd
     if is_supabase_enabled():
         df = await read_all_logs_from_excel()
     else:
         async with excel_lock:
             df = await read_all_logs_from_excel()
+            
+    for col in ["Patents Processed", "Excel Downloads", "PNG Downloads", "Excel Download Size (bytes)", "PNG Download Size (bytes)"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+            
     records = df.fillna("").to_dict(orient="records")
     return {"logs": records}
 

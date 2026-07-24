@@ -178,11 +178,11 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
                 "Logout Time": r.get("logout_time") or "",
                 "Duration": r.get("duration", "00:00:00"),
                 "Uploaded Files": files_str,
-                "Patents Processed": r.get("patents_processed", 0),
-                "Excel Downloads": r.get("excel_downloads", 0),
-                "PNG Downloads": r.get("png_downloads", 0),
-                "Excel Download Size (bytes)": r.get("excel_download_bytes", 0),
-                "PNG Download Size (bytes)": r.get("png_download_bytes", 0),
+                "Patents Processed": int(r.get("patents_processed") or 0),
+                "Excel Downloads": int(r.get("excel_downloads") or 0),
+                "PNG Downloads": int(r.get("png_downloads") or 0),
+                "Excel Download Size (bytes)": int(r.get("excel_download_bytes") or 0),
+                "PNG Download Size (bytes)": int(r.get("png_download_bytes") or 0),
                 "Last Active Time": r.get("last_active_time") or "",
                 "Status": r.get("status", "active")
             })
@@ -201,12 +201,23 @@ async def read_all_logs_from_excel() -> pd.DataFrame:
     try:
         # Run pd.read_excel in a separate thread to avoid blocking the event loop
         df = await asyncio.to_thread(pd.read_excel, LOGS_EXCEL)
-        # Ensure all columns exist
         empty_df = get_empty_log_df()
+        
+        # Ensure all columns exist
         for col in empty_df.columns:
             if col not in df.columns:
-                df[col] = None
-        # Cast to object type to prevent float64 dtype TypeError when setting strings
+                if "Size" in col or "Downloads" in col or "Processed" in col:
+                    df[col] = 0
+                else:
+                    df[col] = None
+                    
+        # Reindex columns to strictly match get_empty_log_df() order
+        df = df.reindex(columns=empty_df.columns)
+        
+        # Fill NaN for numeric columns
+        for col in ["Patents Processed", "Excel Downloads", "PNG Downloads", "Excel Download Size (bytes)", "PNG Download Size (bytes)"]:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+            
         df = df.astype(object)
         return df
     except Exception as e:
@@ -216,12 +227,15 @@ async def read_all_logs_from_excel() -> pd.DataFrame:
 async def write_logs_to_excel(df: pd.DataFrame):
     """Write the DataFrame to usage_logs.xlsx. Always protected by excel_lock."""
     try:
-        # Run df.to_excel in a separate thread to avoid blocking the event loop
+        os.makedirs(DATA_DIR, exist_ok=True)
+        # Ensure column order matches get_empty_log_df()
+        empty_df = get_empty_log_df()
+        df = df.reindex(columns=empty_df.columns)
         await asyncio.to_thread(df.to_excel, LOGS_EXCEL, index=False)
     except Exception as e:
         logger.error(f"Error writing Excel logs: {e}")
 
-async def sync_log_to_supabase(session_id: str, record: dict):
+async def sync_log_to_supabase(session_id: str, record: dict) -> bool:
     """Sync a single session log record to Supabase usage_logs table."""
     try:
         headers = {
@@ -239,35 +253,46 @@ async def sync_log_to_supabase(session_id: str, record: dict):
             "logout_time": record.get("logout_time") or None,
             "duration": record.get("duration", "00:00:00"),
             "uploaded_files": record.get("uploaded_files", []),
-            "patents_processed": record.get("patents_processed", 0),
-            "excel_downloads": record.get("excel_downloads", 0),
-            "png_downloads": record.get("png_downloads", 0),
-            "excel_download_bytes": record.get("excel_download_bytes", 0),
-            "png_download_bytes": record.get("png_download_bytes", 0),
+            "patents_processed": int(record.get("patents_processed", 0)),
+            "excel_downloads": int(record.get("excel_downloads", 0)),
+            "png_downloads": int(record.get("png_downloads", 0)),
+            "excel_download_bytes": int(record.get("excel_download_bytes", 0)),
+            "png_download_bytes": int(record.get("png_download_bytes", 0)),
             "last_active_time": record.get("last_active_time") or None,
             "status": record.get("status", "active")
         }
         
         def do_post():
             res = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs?on_conflict=session_id", json=db_row, headers=headers, timeout=10)
-            res.raise_for_status()
+            if res.status_code == 400 and ("excel_download_bytes" in res.text or "png_download_bytes" in res.text):
+                # Fallback if Supabase schema cache hasn't updated columns yet
+                fallback_row = {k: v for k, v in db_row.items() if k not in ("excel_download_bytes", "png_download_bytes")}
+                res2 = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs?on_conflict=session_id", json=fallback_row, headers=headers, timeout=10)
+                res2.raise_for_status()
+            else:
+                res.raise_for_status()
             
         await asyncio.to_thread(do_post)
+        return True
     except Exception as e:
         logger.error(f"Error syncing log to Supabase: {e}")
+        return False
 
 async def sync_log_to_excel(session_id: str, record: dict):
     """
     Sync or insert a single session log record to Supabase or Excel file.
     """
+    supabase_success = False
     if is_supabase_enabled():
-        await sync_log_to_supabase(session_id, record)
+        supabase_success = await sync_log_to_supabase(session_id, record)
         
     try:
         async with excel_lock:
-            df = await read_all_logs_from_excel()
-            if is_supabase_enabled():
+            # If Supabase is enabled and sync succeeded, skip local Excel writing
+            if is_supabase_enabled() and supabase_success:
                 return
+            
+            df = await read_all_logs_from_excel()
             
             # Clean record fields for Excel representation
             excel_row = {
@@ -278,11 +303,11 @@ async def sync_log_to_excel(session_id: str, record: dict):
                 "Logout Time": record.get("logout_time", ""),
                 "Duration": record.get("duration", "00:00:00"),
                 "Uploaded Files": ", ".join(record.get("uploaded_files", [])),
-                "Patents Processed": record.get("patents_processed", 0),
-                "Excel Downloads": record.get("excel_downloads", 0),
-                "PNG Downloads": record.get("png_downloads", 0),
-                "Excel Download Size (bytes)": record.get("excel_download_bytes", 0),
-                "PNG Download Size (bytes)": record.get("png_download_bytes", 0),
+                "Patents Processed": int(record.get("patents_processed", 0)),
+                "Excel Downloads": int(record.get("excel_downloads", 0)),
+                "PNG Downloads": int(record.get("png_downloads", 0)),
+                "Excel Download Size (bytes)": int(record.get("excel_download_bytes", 0)),
+                "PNG Download Size (bytes)": int(record.get("png_download_bytes", 0)),
                 "Last Active Time": record.get("last_active_time"),
                 "Status": record.get("status", "active")
             }
@@ -307,8 +332,8 @@ async def sync_log_to_excel(session_id: str, record: dict):
 
 # --- Session Logging API Functions ---
 
-async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
-    """Retrieve the log record from active memory or restore it from Supabase/Excel if missing."""
+async def get_or_restore_log_record(session_id: str) -> dict:
+    """Retrieve the log record from active memory or restore/create it if missing."""
     if session_id in active_logs:
         return active_logs[session_id]
         
@@ -338,11 +363,11 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
                     "logout_time": row.get("logout_time"),
                     "duration": str(row.get("duration", "00:00:00")),
                     "uploaded_files": files_list,
-                    "patents_processed": int(row.get("patents_processed", 0)),
-                    "excel_downloads": int(row.get("excel_downloads", 0)),
-                    "png_downloads": int(row.get("png_downloads", 0)),
-                    "excel_download_bytes": int(row.get("excel_download_bytes", 0)),
-                    "png_download_bytes": int(row.get("png_download_bytes", 0)),
+                    "patents_processed": int(row.get("patents_processed") or 0),
+                    "excel_downloads": int(row.get("excel_downloads") or 0),
+                    "png_downloads": int(row.get("png_downloads") or 0),
+                    "excel_download_bytes": int(row.get("excel_download_bytes") or 0),
+                    "png_download_bytes": int(row.get("png_download_bytes") or 0),
                     "last_active_time": row.get("last_active_time"),
                     "status": str(row.get("status", "active"))
                 }
@@ -372,11 +397,11 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
                     "logout_time": str(row.get("Logout Time", "")),
                     "duration": str(row.get("Duration", "00:00:00")),
                     "uploaded_files": uploaded_files,
-                    "patents_processed": int(row.get("Patents Processed", 0) if pd.notna(row.get("Patents Processed")) else 0),
-                    "excel_downloads": int(row.get("Excel Downloads", 0) if pd.notna(row.get("Excel Downloads")) else 0),
-                    "png_downloads": int(row.get("PNG Downloads", 0) if pd.notna(row.get("PNG Downloads")) else 0),
-                    "excel_download_bytes": int(row.get("Excel Download Size (bytes)", 0) if pd.notna(row.get("Excel Download Size (bytes)")) else 0),
-                    "png_download_bytes": int(row.get("PNG Download Size (bytes)", 0) if pd.notna(row.get("PNG Download Size (bytes)")) else 0),
+                    "patents_processed": int(row.get("Patents Processed") or 0),
+                    "excel_downloads": int(row.get("Excel Downloads") or 0),
+                    "png_downloads": int(row.get("PNG Downloads") or 0),
+                    "excel_download_bytes": int(row.get("Excel Download Size (bytes)") or 0),
+                    "png_download_bytes": int(row.get("PNG Download Size (bytes)") or 0),
                     "last_active_time": str(row.get("Last Active Time", "")),
                     "status": str(row.get("Status", "active"))
                 }
@@ -385,7 +410,27 @@ async def get_or_restore_log_record(session_id: str) -> Optional[dict]:
     except Exception as e:
         logger.warning(f"Error restoring session from local Excel: {e}")
             
-    return None
+    # Fallback: create a new active log record if session_id is valid but wasn't found
+    now_str = datetime.now(timezone.utc).isoformat()
+    fallback_record = {
+        "session_id": session_id,
+        "username": "unknown",
+        "ip_address": "unknown",
+        "login_time": now_str,
+        "logout_time": None,
+        "duration": "00:00:00",
+        "uploaded_files": [],
+        "patents_processed": 0,
+        "excel_downloads": 0,
+        "png_downloads": 0,
+        "excel_download_bytes": 0,
+        "png_download_bytes": 0,
+        "last_active_time": now_str,
+        "status": "active"
+    }
+    active_logs[session_id] = fallback_record
+    await sync_log_to_excel(session_id, fallback_record)
+    return fallback_record
 
 async def log_login(session_id: str, username: str, ip_address: str):
     """Log user login event."""
@@ -416,8 +461,9 @@ async def log_heartbeat(session_id: str):
     if record:
         now_str = datetime.now(timezone.utc).isoformat()
         record["last_active_time"] = now_str
-        # We don't sync heartbeats to Excel immediately to avoid high disk IO
-        # The background cleaner or final logout will sync this.
+        if record.get("status") == "timeout":
+            record["status"] = "active"
+            record["logout_time"] = None
 
 async def log_logout(session_id: str):
     """Log user logout event."""
@@ -471,6 +517,9 @@ async def increment_excel_downloads(session_id: str, file_size_bytes: int = 0):
     if record:
         record["excel_downloads"] += 1
         record["excel_download_bytes"] = record.get("excel_download_bytes", 0) + max(0, int(file_size_bytes))
+        if record.get("status") == "timeout":
+            record["status"] = "active"
+            record["logout_time"] = None
         await sync_log_to_excel(session_id, record)
 
 async def increment_png_downloads(session_id: str, file_size_bytes: int = 0):
@@ -479,14 +528,17 @@ async def increment_png_downloads(session_id: str, file_size_bytes: int = 0):
     if record:
         record["png_downloads"] += 1
         record["png_download_bytes"] = record.get("png_download_bytes", 0) + max(0, int(file_size_bytes))
+        if record.get("status") == "timeout":
+            record["status"] = "active"
+            record["logout_time"] = None
         await sync_log_to_excel(session_id, record)
 
 # --- Background Task: Clean Timeout Sessions ---
 
-async def clean_expired_sessions(timeout_seconds: int = 60):
+async def clean_expired_sessions(timeout_seconds: int = 300):
     """
     Scans active logs in memory.
-    If last_active_time is older than timeout_seconds, mark it as timeout,
+    If last_active_time is older than timeout_seconds (default 5 minutes), mark it as timeout,
     write duration to Excel, and remove it from active memory.
     """
     now = datetime.now(timezone.utc)
@@ -516,7 +568,7 @@ async def clean_expired_sessions(timeout_seconds: int = 60):
     for session_id in expired_session_ids:
         active_logs.pop(session_id, None)
 
-async def session_timeout_cleanup_loop(interval: int = 30, timeout: int = 60):
+async def session_timeout_cleanup_loop(interval: int = 30, timeout: int = 300):
     """Infinite loop for the background thread to scan timeouts."""
     while True:
         try:
@@ -526,3 +578,4 @@ async def session_timeout_cleanup_loop(interval: int = 30, timeout: int = 60):
             break
         except Exception as e:
             logger.error(f"Error in session timeout cleanup loop: {e}")
+
