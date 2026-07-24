@@ -376,10 +376,9 @@ async def get_or_restore_log_record(session_id: str) -> dict:
         except Exception as e:
             logger.error(f"Error restoring session from Supabase: {e}")
             
-    # Read Excel to try restoring it
+    # Read Excel to try restoring it (do NOT hold excel_lock here to avoid deadlock with sync_log_to_excel)
     try:
-        async with excel_lock:
-            df = await read_all_logs_from_excel()
+        df = await read_all_logs_from_excel()
             
         if not df.empty and "Session ID" in df.columns:
             matches = df[df["Session ID"] == session_id]
@@ -406,6 +405,7 @@ async def get_or_restore_log_record(session_id: str) -> dict:
                     "status": str(row.get("Status", "active"))
                 }
                 active_logs[session_id] = record
+                logger.info(f"Session {session_id} restored from Excel: excel_bytes={record['excel_download_bytes']}, png_bytes={record['png_download_bytes']}")
                 return record
     except Exception as e:
         logger.warning(f"Error restoring session from local Excel: {e}")
@@ -520,6 +520,7 @@ async def increment_excel_downloads(session_id: str, file_size_bytes: int = 0):
         if record.get("status") == "timeout":
             record["status"] = "active"
             record["logout_time"] = None
+        logger.info(f"Excel download logged: session={session_id}, size={file_size_bytes}, total_bytes={record['excel_download_bytes']}, count={record['excel_downloads']}")
         await sync_log_to_excel(session_id, record)
 
 async def increment_png_downloads(session_id: str, file_size_bytes: int = 0):
@@ -531,6 +532,7 @@ async def increment_png_downloads(session_id: str, file_size_bytes: int = 0):
         if record.get("status") == "timeout":
             record["status"] = "active"
             record["logout_time"] = None
+        logger.info(f"PNG download logged: session={session_id}, size={file_size_bytes}, total_bytes={record['png_download_bytes']}, count={record['png_downloads']}")
         await sync_log_to_excel(session_id, record)
 
 # --- Background Task: Clean Timeout Sessions ---
