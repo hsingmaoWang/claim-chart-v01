@@ -362,7 +362,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         const canvas = await html2canvas(heatmapContainerRef.current, {
           backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
           scale: 2,
-          useCORS: true
+          useCORS: true,
+          ignoreElements: (el) => el.classList && el.classList.contains('app-bg')
         });
         const image = canvas.toDataURL("image/png");
         const a = document.createElement("a");

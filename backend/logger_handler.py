@@ -162,16 +162,43 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
             
         rows = await asyncio.to_thread(do_get)
         
+        local_df = pd.DataFrame()
+        if os.path.exists(LOGS_EXCEL):
+            try:
+                local_df = pd.read_excel(LOGS_EXCEL)
+            except Exception:
+                pass
+        
         excel_rows = []
         for r in rows:
+            sid = r.get("session_id")
             files_list = r.get("uploaded_files")
             if isinstance(files_list, list):
                 files_str = ", ".join(files_list)
             else:
                 files_str = str(files_list or "")
                 
+            excel_bytes = int(r.get("excel_download_bytes") or 0)
+            png_bytes = int(r.get("png_download_bytes") or 0)
+            
+            # Fallback merge: if Supabase returns 0 (e.g. column missing or not updated), read from active memory or local Excel
+            if sid in active_logs:
+                if excel_bytes == 0:
+                    excel_bytes = int(active_logs[sid].get("excel_download_bytes", 0))
+                if png_bytes == 0:
+                    png_bytes = int(active_logs[sid].get("png_download_bytes", 0))
+                    
+            if not local_df.empty and "Session ID" in local_df.columns:
+                matches = local_df[local_df["Session ID"] == sid]
+                if not matches.empty:
+                    loc_row = matches.iloc[0]
+                    if excel_bytes == 0:
+                        excel_bytes = int(loc_row.get("Excel Download Size (bytes)") or 0)
+                    if png_bytes == 0:
+                        png_bytes = int(loc_row.get("PNG Download Size (bytes)") or 0)
+                
             excel_rows.append({
-                "Session ID": r.get("session_id"),
+                "Session ID": sid,
                 "Username": r.get("username"),
                 "IP Address": r.get("ip_address"),
                 "Login Time": r.get("login_time") or "",
@@ -181,8 +208,8 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
                 "Patents Processed": int(r.get("patents_processed") or 0),
                 "Excel Downloads": int(r.get("excel_downloads") or 0),
                 "PNG Downloads": int(r.get("png_downloads") or 0),
-                "Excel Download Size (bytes)": int(r.get("excel_download_bytes") or 0),
-                "PNG Download Size (bytes)": int(r.get("png_download_bytes") or 0),
+                "Excel Download Size (bytes)": excel_bytes,
+                "PNG Download Size (bytes)": png_bytes,
                 "Last Active Time": r.get("last_active_time") or "",
                 "Status": r.get("status", "active")
             })
@@ -269,11 +296,13 @@ async def sync_log_to_supabase(session_id: str, record: dict) -> bool:
                 fallback_row = {k: v for k, v in db_row.items() if k not in ("excel_download_bytes", "png_download_bytes")}
                 res2 = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs?on_conflict=session_id", json=fallback_row, headers=headers, timeout=10)
                 res2.raise_for_status()
+                return False # Full byte sync failed due to missing Supabase columns
             else:
                 res.raise_for_status()
+                return True
             
-        await asyncio.to_thread(do_post)
-        return True
+        full_sync_ok = await asyncio.to_thread(do_post)
+        return full_sync_ok
     except Exception as e:
         logger.error(f"Error syncing log to Supabase: {e}")
         return False
