@@ -1299,14 +1299,7 @@ async def export_preprocessed(file_id: str, x_session_id: str = Header(default="
     file_path = temp_storage[file_id]["file_path_preprocessed"]
     filename = f"preprocessed_{temp_storage[file_id]['filename']}"
     
-    # Log Excel download to the active session
-    session_id = x_session_id or temp_storage[file_id].get("x_session_id")
-    if session_id:
-        try:
-            from logger_handler import increment_excel_downloads
-            await increment_excel_downloads(session_id)
-        except Exception:
-            pass
+
 
     return FileResponse(
         path=file_path,
@@ -2128,13 +2121,7 @@ async def export_mindmap_excel(data: dict, x_session_id: str = Header(default=""
         except Exception as e:
             logger.warning(f"Failed to write summary_title to N1: {e}")
 
-    # Log Excel download to the active session
-    if x_session_id:
-        try:
-            from logger_handler import increment_excel_downloads
-            await increment_excel_downloads(x_session_id)
-        except Exception:
-            pass
+
 
     return FileResponse(path=out_path, filename=out_filename,
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
