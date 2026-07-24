@@ -306,7 +306,19 @@ const AdminConsoleModal = ({ authState, getAuthHeaders, isOpen, onClose }) => {
           </div>
         ) : (
           filteredLogs.map(log => {
-            const timeStr = log.timestamp ? log.timestamp.split('T')[1]?.slice(0, 8) : '';
+            let timeStr = '';
+            if (log.timestamp) {
+              try {
+                const dateObj = new Date(log.timestamp);
+                if (!isNaN(dateObj.getTime())) {
+                  timeStr = dateObj.toLocaleTimeString('zh-TW', { hour12: false });
+                } else {
+                  timeStr = log.timestamp.split('T')[1]?.slice(0, 8) || '';
+                }
+              } catch (e) {
+                timeStr = log.timestamp.split('T')[1]?.slice(0, 8) || '';
+              }
+            }
             const color = getLevelColor(log.level, log.message);
             return (
               <div key={log.id} style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.25rem', wordBreak: 'break-word' }}>
