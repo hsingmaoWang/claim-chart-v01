@@ -3,6 +3,12 @@ import sys
 import os
 import asyncio
 
+try:
+    import truststore
+    truststore.inject_into_urllib3()
+except Exception:
+    pass
+
 # Ensure local imports work regardless of where uvicorn is run from
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 

@@ -10,7 +10,10 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Paths
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+if os.environ.get("VERCEL"):
+    DATA_DIR = "/tmp"
+else:
+    DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 LOGS_EXCEL = os.path.join(DATA_DIR, "usage_logs.xlsx")
 
 # Concurrency lock to protect Excel file access — created lazily inside the event loop
