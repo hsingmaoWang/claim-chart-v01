@@ -14,7 +14,7 @@ class AdminLogStreamHandler(logging.Handler):
         self.capacity = capacity
         self.buffer = deque(maxlen=capacity)
         self.counter = 0
-        self.lock = threading.Lock()
+        self.buf_lock = threading.Lock()
         
         # Set standard format
         self.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -22,7 +22,7 @@ class AdminLogStreamHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         try:
             msg = self.format(record)
-            with self.lock:
+            with self.buf_lock:
                 self.counter += 1
                 log_entry = {
                     "id": self.counter,
@@ -37,13 +37,13 @@ class AdminLogStreamHandler(logging.Handler):
             self.handleError(record)
 
     def get_logs_after(self, after_id: int = 0) -> List[Dict[str, Any]]:
-        with self.lock:
+        with self.buf_lock:
             if after_id <= 0:
                 return list(self.buffer)
             return [log for log in self.buffer if log["id"] > after_id]
 
     def clear(self):
-        with self.lock:
+        with self.buf_lock:
             self.buffer.clear()
 
 # Global Singleton instance

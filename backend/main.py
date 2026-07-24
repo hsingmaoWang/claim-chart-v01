@@ -354,12 +354,12 @@ async def admin_supabase_test():
 @app.get("/api/admin/logs")
 async def admin_get_logs(current_admin: dict = Depends(get_current_admin)):
     """Read all usage logs (admin only)."""
-    from logger_handler import read_all_logs_from_excel, excel_lock, is_supabase_enabled
+    from logger_handler import read_all_logs_from_excel, get_excel_lock, is_supabase_enabled
     import pandas as pd
     if is_supabase_enabled():
         df = await read_all_logs_from_excel()
     else:
-        async with excel_lock:
+        async with get_excel_lock():
             df = await read_all_logs_from_excel()
             
     for col in ["Patents Processed", "Excel Downloads", "PNG Downloads", "Excel Download Size (bytes)", "PNG Download Size (bytes)"]:
@@ -402,13 +402,13 @@ def to_taiwan_time_str(iso_str: str) -> str:
 @app.get("/api/admin/logs/download")
 async def admin_download_logs(current_admin: dict = Depends(get_current_admin)):
     """Download usage_logs.xlsx (admin only) - generated from Supabase or local file."""
-    from logger_handler import read_all_logs_from_excel, excel_lock, is_supabase_enabled, LOGS_EXCEL
+    from logger_handler import read_all_logs_from_excel, get_excel_lock, is_supabase_enabled, LOGS_EXCEL
     import pandas as pd
     
     if is_supabase_enabled():
         df = await read_all_logs_from_excel()
     else:
-        async with excel_lock:
+        async with get_excel_lock():
             df = await read_all_logs_from_excel()
             
     # Convert "Login Time" and "Logout Time" to Taiwan time string for Excel download

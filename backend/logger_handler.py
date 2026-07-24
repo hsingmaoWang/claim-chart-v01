@@ -13,8 +13,18 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 LOGS_EXCEL = os.path.join(DATA_DIR, "usage_logs.xlsx")
 
-# Concurrency lock to protect Excel file access
-excel_lock = asyncio.Lock()
+# Concurrency lock to protect Excel file access — created lazily inside the event loop
+_excel_lock: asyncio.Lock = None
+
+def get_excel_lock() -> asyncio.Lock:
+    """Return the excel asyncio.Lock, creating it if needed (must be called inside a running event loop)."""
+    global _excel_lock
+    if _excel_lock is None:
+        _excel_lock = asyncio.Lock()
+    return _excel_lock
+
+# Alias for backward compat with any direct references
+excel_lock = None  # Will be set properly at first use via get_excel_lock()
 
 # In-memory sessions log state: session_id -> log_record_dict
 # This stores active logs that are still running or updating.
@@ -47,7 +57,7 @@ def get_empty_log_df() -> pd.DataFrame:
 
 async def init_logs_excel():
     """Initialize the usage_logs.xlsx file if it doesn't exist."""
-    async with excel_lock:
+    async with get_excel_lock():
         if not os.path.exists(LOGS_EXCEL):
             try:
                 df = get_empty_log_df()
@@ -56,11 +66,7 @@ async def init_logs_excel():
             except Exception as e:
                 logger.error(f"Error initializing usage log Excel: {e}")
 
-# Call init on import using asyncio task (run in event loop)
-try:
-    asyncio.create_task(init_logs_excel())
-except Exception:
-    pass
+# (removed unsafe asyncio.create_task at import time)
 
 def parse_datetime(val) -> Optional[datetime]:
     if val is None:
@@ -316,7 +322,7 @@ async def sync_log_to_excel(session_id: str, record: dict):
         supabase_success = await sync_log_to_supabase(session_id, record)
         
     try:
-        async with excel_lock:
+        async with get_excel_lock():
             # If Supabase is enabled and sync succeeded, skip local Excel writing
             if is_supabase_enabled() and supabase_success:
                 return
