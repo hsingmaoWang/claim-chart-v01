@@ -35,44 +35,46 @@ def get_password_hash(password: str, salt: str) -> str:
 
 def init_default_users():
     """Initialize users database with default admin and general user if it doesn't exist."""
-    with users_file_lock:
-        if is_supabase_enabled():
-            try:
-                headers = {
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_KEY}"
-                }
-                res = requests.get(f"{SUPABASE_URL}/rest/v1/users?select=username", headers=headers, timeout=10)
-                res.raise_for_status()
-                if not res.json():
-                    logger.info("Initializing default users in Supabase...")
-                    admin_salt = secrets.token_hex(16)
-                    user_salt = secrets.token_hex(16)
-                    default_users = {
-                        "admin": {
-                            "password_hash": get_password_hash("admin_password", admin_salt),
-                            "salt": admin_salt,
-                            "role": "admin",
-                            "notes": ""
-                        },
-                        "user": {
-                            "password_hash": get_password_hash("user_password", user_salt),
-                            "salt": user_salt,
-                            "role": "user",
-                            "notes": ""
-                        }
+    # NOTE: Do NOT hold users_file_lock here while calling save_users(),
+    # because save_users() also acquires users_file_lock (threading.Lock is non-reentrant).
+    if is_supabase_enabled():
+        try:
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            res = requests.get(f"{SUPABASE_URL}/rest/v1/users?select=username", headers=headers, timeout=10)
+            res.raise_for_status()
+            if not res.json():
+                logger.info("Initializing default users in Supabase...")
+                admin_salt = secrets.token_hex(16)
+                user_salt = secrets.token_hex(16)
+                default_users = {
+                    "admin": {
+                        "password_hash": get_password_hash("admin_password", admin_salt),
+                        "salt": admin_salt,
+                        "role": "admin",
+                        "notes": ""
+                    },
+                    "user": {
+                        "password_hash": get_password_hash("user_password", user_salt),
+                        "salt": user_salt,
+                        "role": "user",
+                        "notes": ""
                     }
-                    save_users(default_users)
-                return
-            except Exception as e:
-                logger.error(f"Error initializing default users in Supabase: {e}")
-                # Fallback to local file initialization
+                }
+                save_users(default_users)  # safe: no lock held here
+            return
+        except Exception as e:
+            logger.error(f"Error initializing default users in Supabase: {e}")
+            # Fallback to local file initialization
 
+    with users_file_lock:
         if not os.path.exists(USERS_FILE):
             logger.info("Initializing default users database locally...")
             admin_salt = secrets.token_hex(16)
             user_salt = secrets.token_hex(16)
-            
+
             default_users = {
                 "admin": {
                     "password_hash": get_password_hash("admin_password", admin_salt),
