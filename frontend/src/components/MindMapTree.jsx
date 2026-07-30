@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import html2canvas from 'html2canvas';
 import { Download, Sun, Moon } from 'lucide-react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -159,38 +158,81 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
     }, [treeData, levelHierarchy]);
 
     const captureImage = useCallback(async () => {
-        if (treeContainerRef.current) {
-            try {
-                const canvas = await html2canvas(treeContainerRef.current, {
-                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                    scale: 2,
-                    useCORS: true,
-                    ignoreElements: (el) => el.classList && el.classList.contains('app-bg')
-                });
-                const image = canvas.toDataURL("image/png");
-                const a = document.createElement("a");
-                a.href = image;
+        const svgElem = svgRef.current;
+        const container = treeContainerRef.current;
+        if (!svgElem || !container) return;
+        try {
+            const bgColor = theme === 'dark' ? '#0f172a' : '#ffffff';
 
-                const now = new Date();
-                const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
-                a.download = `markmap_cyber_${timestamp}.png`;
-                a.click();
+            // Get the bounding rect of the container for canvas dimensions
+            const rect = container.getBoundingClientRect();
+            const scale = 2; // retina quality
+            const W = Math.round(rect.width * scale);
+            const H = Math.round(rect.height * scale);
 
-                // Log PNG download usage event (including estimated file size)
-                if (authState?.session_id) {
-                    // Estimate PNG size from base64 data URL
-                    const base64Data = image.split(',')[1] || '';
-                    const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
-                    const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
-                    fetch('/api/usage/log-png', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
-                    }).catch(err => console.error("Failed to log PNG download", err));
-                }
-            } catch (err) {
-                console.error("Failed to capture image", err);
-            }
+            // Serialize the SVG with its current dimensions
+            const svgClone = svgElem.cloneNode(true);
+            svgClone.setAttribute('width', String(rect.width));
+            svgClone.setAttribute('height', String(rect.height));
+            // Embed any computed styles for markmap elements so they render correctly in the canvas
+            const styleEl = document.createElement('style');
+            styleEl.textContent = [
+                `.markmap-node { font-weight: bold; }`,
+                theme === 'dark'
+                    ? `.markmap-node { color: #ffffff; } .markmap-foreign { color: white; } .markmap-circle { fill: #0f172a; stroke-width: 2px; }`
+                    : `.markmap-node { color: #000000; } .markmap-foreign { color: black; } .markmap-circle { fill: #ffffff; stroke-width: 2px; }`,
+                `path.markmap-link { fill: none; stroke-width: 2px; }`
+            ].join('\n');
+            svgClone.insertBefore(styleEl, svgClone.firstChild);
+
+            const svgStr = new XMLSerializer().serializeToString(svgClone);
+            const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+
+            await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = W;
+                    canvas.height = H;
+                    const ctx = canvas.getContext('2d');
+                    // Fill background first — this prevents transparency
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(0, 0, W, H);
+                    ctx.drawImage(img, 0, 0, W, H);
+                    URL.revokeObjectURL(url);
+
+                    const image = canvas.toDataURL('image/png');
+                    const a = document.createElement('a');
+                    a.href = image;
+                    const now = new Date();
+                    const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
+                    a.download = `markmap_cyber_${timestamp}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                    // Log PNG download usage event
+                    if (authState?.session_id) {
+                        const base64Data = image.split(',')[1] || '';
+                        const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
+                        const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
+                        fetch('/api/usage/log-png', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
+                        }).catch(err => console.error('Failed to log PNG download', err));
+                    }
+                    resolve();
+                };
+                img.onerror = (e) => {
+                    URL.revokeObjectURL(url);
+                    reject(e);
+                };
+                img.src = url;
+            });
+        } catch (err) {
+            console.error('Failed to capture image', err);
         }
     }, [theme, authState]);
 

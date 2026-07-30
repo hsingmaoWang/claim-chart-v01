@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas'; // kept for potential fallback use
 import {
   DndContext,
   closestCenter,
@@ -357,38 +357,73 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   }, [patents, xAxisDims, yAxisDim]);
 
   const captureImage = useCallback(async () => {
-    if (heatmapContainerRef.current) {
-      try {
-        const canvas = await html2canvas(heatmapContainerRef.current, {
-          backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+    const container = heatmapContainerRef.current;
+    if (!container) return;
+    try {
+      const bgColor = theme === 'dark' ? '#0f172a' : '#ffffff';
+      const plotDiv = container.querySelector('.js-plotly-plot');
+
+      let image;
+      if (plotDiv) {
+        // Use Plotly's built-in image export — renders perfectly with full background
+        image = await Plotly.toImage(plotDiv, {
+          format: 'png',
           scale: 2,
-          useCORS: true,
-          ignoreElements: (el) => el.classList && el.classList.contains('app-bg')
+          width: plotDiv.offsetWidth || 1200,
+          height: plotDiv.offsetHeight || 800,
         });
-        const image = canvas.toDataURL("image/png");
-        const a = document.createElement("a");
-        a.href = image;
-
-        const now = new Date();
-        const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
-        a.download = `heatmap_${timestamp}.png`;
-        a.click();
-
-        // Log PNG download usage event (including estimated file size)
-        if (authState?.session_id) {
-          // Estimate PNG size from base64 data URL
-          const base64Data = image.split(',')[1] || '';
-          const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
-          const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
-          fetch('/api/usage/log-png', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
-          }).catch(err => console.error("Failed to log PNG download", err));
-        }
-      } catch (err) {
-        console.error("Failed to capture heatmap image", err);
+        // Plotly.toImage returns a data URL — draw onto canvas with background fill
+        await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            image = canvas.toDataURL('image/png');
+            resolve();
+          };
+          img.onerror = reject;
+          img.src = image;
+        });
+      } else {
+        // Fallback: blank canvas with background
+        const rect = container.getBoundingClientRect();
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(rect.width * scale);
+        canvas.height = Math.round(rect.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        image = canvas.toDataURL('image/png');
       }
+
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
+      const a = document.createElement('a');
+      a.href = image;
+      a.download = `heatmap_${timestamp}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Log PNG download usage event (including estimated file size)
+      if (authState?.session_id) {
+        const base64Data = image.split(',')[1] || '';
+        const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
+        const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
+        fetch('/api/usage/log-png', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
+        }).catch(err => console.error('Failed to log PNG download', err));
+      }
+    } catch (err) {
+      console.error('Failed to capture heatmap image', err);
     }
   }, [theme, authState]);
 

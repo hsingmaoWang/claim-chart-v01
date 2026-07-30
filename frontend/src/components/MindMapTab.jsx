@@ -207,6 +207,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
   const handleExportPreprocessExcel = async () => {
     if (!fileInfo) return;
+    document.body.style.cursor = 'wait';
     try {
       const response = await fetch(`/api/mindmap/export_preprocessed?file_id=${fileInfo.file_id}`, {
         headers: getAuthHeaders ? getAuthHeaders() : {}
@@ -218,7 +219,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       const a = document.createElement('a');
       a.href = url;
       a.download = `preprocessed_${fileInfo.filename}`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
       // Log Excel download usage event (including actual file size)
@@ -232,6 +235,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     } catch (err) {
       console.error(err);
       alert('匯出預處理 Excel 失敗。');
+    } finally {
+      document.body.style.cursor = 'default';
     }
   };
 
@@ -454,6 +459,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   };
 
   const handleExportExcel = async () => {
+    // Change cursor to loading while Excel is being prepared
+    document.body.style.cursor = 'wait';
     try {
       // Merge stage1Taxonomy definitions or treeData for complete export
       const payload = {
@@ -492,7 +499,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
         }
       }
       a.download = filename;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
       // Log Excel download usage event (including actual file size)
@@ -506,6 +515,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     } catch (err) {
       console.error(err);
       alert('Failed to export.');
+    } finally {
+      // Restore cursor regardless of success or failure
+      document.body.style.cursor = 'default';
     }
   };
 

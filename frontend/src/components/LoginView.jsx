@@ -399,7 +399,7 @@ const styles = {
     right: '0.9rem',
     background: 'none',
     border: 'none',
-    color: 'rgba(186,230,253,0.6)',
+    color: 'rgba(205, 114, 238, 0.84)',
     cursor: 'pointer',
     padding: '0.2rem',
     display: 'flex',
