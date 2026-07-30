@@ -309,6 +309,12 @@ async def admin_delete_user(
         raise HTTPException(status_code=404, detail=f"User '{username}' not found.")
     
     del users[username]
+    try:
+        from auth_handler import delete_user_from_supabase
+        delete_user_from_supabase(username)
+    except Exception as e:
+        logger.warning(f"Failed to delete user '{username}' from Supabase: {e}")
+        
     if not save_users(users):
         raise HTTPException(status_code=500, detail="Failed to save user data.")
     

@@ -95,7 +95,16 @@ def init_default_users():
 init_default_users()
 
 def load_users() -> dict:
-    """Load users from Supabase or local JSON file."""
+    """Load users from local JSON file and merge with Supabase if enabled."""
+    users = {}
+    with users_file_lock:
+        if os.path.exists(USERS_FILE):
+            try:
+                with open(USERS_FILE, "r", encoding="utf-8") as f:
+                    users = json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading local users database: {e}")
+
     if is_supabase_enabled():
         try:
             headers = {
@@ -104,31 +113,56 @@ def load_users() -> dict:
             }
             res = requests.get(f"{SUPABASE_URL}/rest/v1/users", headers=headers, timeout=10)
             res.raise_for_status()
-            users = {}
-            for row in res.json():
-                users[row["username"]] = {
+            sb_users = res.json()
+            sb_usernames = set()
+            for row in sb_users:
+                uname = row["username"]
+                sb_usernames.add(uname)
+                # Merge Supabase user data
+                users[uname] = {
                     "password_hash": row["password_hash"],
                     "salt": row["salt"],
                     "role": row["role"],
                     "notes": row.get("notes", "")
                 }
-            return users
-        except Exception as e:
-            logger.error(f"Error loading users from Supabase: {e}")
-            # Fallback to local users.json on failure
 
-    with users_file_lock:
-        if not os.path.exists(USERS_FILE):
-            return {}
-        try:
-            with open(USERS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+            # If local users exist that are not yet in Supabase, sync them up
+            missing_in_sb = [u for u in users if u not in sb_usernames]
+            if missing_in_sb:
+                logger.info(f"Syncing {len(missing_in_sb)} local users to Supabase...")
+                save_users(users)
         except Exception as e:
-            logger.error(f"Error loading local users database: {e}")
-            return {}
+            logger.error(f"Error loading/syncing users from Supabase: {e}")
+
+    return users
+
+def delete_user_from_supabase(username: str):
+    """Delete a user from Supabase if enabled."""
+    if is_supabase_enabled():
+        try:
+            from urllib.parse import quote
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            res_del = requests.delete(
+                f"{SUPABASE_URL}/rest/v1/users?username=eq.{quote(username)}",
+                headers=headers,
+                timeout=10
+            )
+            res_del.raise_for_status()
+        except Exception as e:
+            logger.error(f"Error deleting user '{username}' from Supabase: {e}")
 
 def save_users(users: dict) -> bool:
-    """Save users to Supabase or local JSON file."""
+    """Save users to local JSON file and Supabase."""
+    with users_file_lock:
+        try:
+            with open(USERS_FILE, "w", encoding="utf-8") as f:
+                json.dump(users, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.error(f"Error saving local users database: {e}")
+
     if is_supabase_enabled():
         try:
             headers = {
@@ -137,34 +171,6 @@ def save_users(users: dict) -> bool:
                 "Content-Type": "application/json",
                 "Prefer": "resolution=merge-duplicates"
             }
-            
-            # Fetch current usernames in Supabase to find deleted ones
-            res_current = requests.get(f"{SUPABASE_URL}/rest/v1/users?select=username", headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }, timeout=10)
-            res_current.raise_for_status()
-            current_db_usernames = {row["username"] for row in res_current.json()}
-            
-            # Usernames in target dict
-            target_usernames = set(users.keys())
-            
-            # Deleted usernames
-            deleted_usernames = current_db_usernames - target_usernames
-            if deleted_usernames:
-                from urllib.parse import quote
-                in_str = quote(f"({','.join(deleted_usernames)})")
-                res_del = requests.delete(
-                    f"{SUPABASE_URL}/rest/v1/users?username=in.{in_str}",
-                    headers={
-                        "apikey": SUPABASE_KEY,
-                        "Authorization": f"Bearer {SUPABASE_KEY}"
-                    },
-                    timeout=10
-                )
-                res_del.raise_for_status()
-                
-            # Upsert target users
             payload = []
             for username, data in users.items():
                 payload.append({
@@ -174,7 +180,6 @@ def save_users(users: dict) -> bool:
                     "role": data.get("role", "user"),
                     "notes": data.get("notes", "")
                 })
-            
             if payload:
                 res_upsert = requests.post(
                     f"{SUPABASE_URL}/rest/v1/users?on_conflict=username",
@@ -186,32 +191,45 @@ def save_users(users: dict) -> bool:
             return True
         except Exception as e:
             logger.error(f"Error saving users to Supabase: {e}")
-            # Fallback to local file on failure
 
-    with users_file_lock:
-        try:
-            with open(USERS_FILE, "w", encoding="utf-8") as f:
-                json.dump(users, f, ensure_ascii=False, indent=4)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving local users database: {e}")
-            return False
+    return True
 
 def verify_credentials(username: str, password: str) -> Optional[dict]:
     """Verify credentials and return user info (without sensitive data) or None."""
-    users = load_users()
-    if username not in users:
+    if not username or not password:
         return None
-    
-    user_data = users[username]
+
+    clean_user = str(username).strip()
+    clean_pass = str(password).strip()
+
+    users = load_users()
+
+    # Case-insensitive & trimmed username match
+    matched_user = None
+    if clean_user in users:
+        matched_user = clean_user
+    else:
+        for u in users:
+            if u.lower() == clean_user.lower():
+                matched_user = u
+                break
+
+    if not matched_user:
+        logger.warning(f"Login failed: username '{clean_user}' not found in user database.")
+        return None
+
+    user_data = users[matched_user]
     salt = user_data.get("salt", "")
-    password_hash = get_password_hash(password, salt)
-    
-    if password_hash == user_data.get("password_hash"):
+    expected_hash = user_data.get("password_hash")
+
+    # Verify using raw password or trimmed password
+    if get_password_hash(password, salt) == expected_hash or get_password_hash(clean_pass, salt) == expected_hash:
         return {
-            "username": username,
+            "username": matched_user,
             "role": user_data.get("role", "user")
         }
+
+    logger.warning(f"Login failed: password mismatch for user '{matched_user}'.")
     return None
 
 def create_session(username: str, role: str) -> str:
