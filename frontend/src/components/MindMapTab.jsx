@@ -207,7 +207,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
   const handleExportPreprocessExcel = async () => {
     if (!fileInfo) return;
+    // Set wait cursor and allow the browser to repaint before the fetch starts
     document.body.style.cursor = 'wait';
+    await new Promise(r => setTimeout(r, 0));
     try {
       const response = await fetch(`/api/mindmap/export_preprocessed?file_id=${fileInfo.file_id}`, {
         headers: getAuthHeaders ? getAuthHeaders() : {}
@@ -459,8 +461,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   };
 
   const handleExportExcel = async () => {
-    // Change cursor to loading while Excel is being prepared
+    // Set wait cursor and allow the browser to repaint before the fetch starts
     document.body.style.cursor = 'wait';
+    await new Promise(r => setTimeout(r, 0));
     try {
       // Merge stage1Taxonomy definitions or treeData for complete export
       const payload = {

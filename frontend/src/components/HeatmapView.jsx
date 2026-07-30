@@ -365,15 +365,20 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
       let image;
       if (plotDiv) {
-        // Use Plotly's built-in image export — renders perfectly with full background
-        image = await Plotly.toImage(plotDiv, {
+        // Use reliable dimensions — offsetWidth/offsetHeight are layout pixels
+        const w = plotDiv.offsetWidth || container.offsetWidth || 1200;
+        const h = plotDiv.offsetHeight || container.offsetHeight || 800;
+
+        // Plotly.toImage returns a "data:image/png;base64,..." data URL
+        const dataUrl = await Plotly.toImage(plotDiv, {
           format: 'png',
           scale: 2,
-          width: plotDiv.offsetWidth || 1200,
-          height: plotDiv.offsetHeight || 800,
+          width: w,
+          height: h,
         });
-        // Plotly.toImage returns a data URL — draw onto canvas with background fill
-        await new Promise((resolve, reject) => {
+
+        // Composite onto a solid background canvas to remove transparency
+        image = await new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
@@ -383,19 +388,17 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             ctx.fillStyle = bgColor;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0);
-            image = canvas.toDataURL('image/png');
-            resolve();
+            resolve(canvas.toDataURL('image/png'));
           };
           img.onerror = reject;
-          img.src = image;
+          img.src = dataUrl;
         });
       } else {
-        // Fallback: blank canvas with background
+        // Fallback: blank canvas with background color only
         const rect = container.getBoundingClientRect();
-        const scale = 2;
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(rect.width * scale);
-        canvas.height = Math.round(rect.height * scale);
+        canvas.width = Math.round(rect.width * 2);
+        canvas.height = Math.round(rect.height * 2);
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
