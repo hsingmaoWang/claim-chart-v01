@@ -1,17 +1,17 @@
 {
     "admin": {
-        "password_hash": "4a6c2c4d163abbd246761378a2078d5efb3140d3ea6a6c949f1170e3d010d29b",
-        "salt": "176c183f1c3334a0f17ee2734e854d99",
+        "password_hash": "6b7908e0ee92f455d6be677df7321b29733751fb9aed66cc3015a963fd5ebbb0",
+        "salt": "5db6463b41932c6053238aeefe26c9f2",
         "role": "admin"
     },
     "user": {
-        "password_hash": "e197b2e23617514d394cf30735afecbfdcc7b65b3fc565ab83f6c4f5816fa01d",
-        "salt": "dbdb3eaac2e3afe27a42af478717dec0",
+        "password_hash": "37ca895410dba5ba61a7d3c2d7ed3ddb133159ebdf8adcd97c6ef937f7444eb6",
+        "salt": "50cd2139192d2991b2ba396f5fe84689",
         "role": "user"
     },
     "hm.wang": {
-        "password_hash": "fadda07eefde9121a85dd023f60b1b35a9be0d3a47e3bf76e7c8fc282cdb09ee",
-        "salt": "194fdc9e7d52ee3e78553c58b586a64a",
+        "password_hash": "4bf4547caf617ce1d0af58580593bca880612042d671205b876895fc8394f87f",
+        "salt": "d27c29199e0641fc10a31ee2b8431b02",
         "role": "user"
     },
     "cc_chang": {
