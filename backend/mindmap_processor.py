@@ -1147,9 +1147,11 @@ async def preprocess_patent_file(
     file: UploadFile = File(...),
     enable_screening: bool = Form(False),
     screening_criteria: str = Form(""),
-    x_session_id: str = Form(default="")
+    x_session_id: str = Form(default=""),
+    x_session_id_header: Optional[str] = Header(None, alias="X-Session-ID")
 ):
     try:
+        session_id = x_session_id or x_session_id_header or ""
         file_id = str(uuid.uuid4())
         temp_dir = os.path.join(tempfile.gettempdir(), "mindmap_preprocess", file_id)
         os.makedirs(temp_dir, exist_ok=True)
@@ -1158,12 +1160,12 @@ async def preprocess_patent_file(
             buffer.write(await file.read())
 
         # Log uploaded filename to session
-        if x_session_id:
+        if session_id:
             try:
                 from logger_handler import add_uploaded_file
-                await add_uploaded_file(x_session_id, file.filename)
-            except Exception:
-                pass
+                await add_uploaded_file(session_id, file.filename)
+            except Exception as e:
+                logger.warning(f"Failed to log uploaded file: {e}")
             
         # 1. 偵測是否可直接 Bypass AI 分析流程
         is_bypass, final_result = detect_and_parse_bypass_excel(file_path, file.filename, file_id)
@@ -1177,7 +1179,7 @@ async def preprocess_patent_file(
                 "file_path_preprocessed": file_path,
                 "stage1_taxonomy": final_result["stage1_taxonomy"],
                 "stage2_result": final_result,
-                "x_session_id": x_session_id
+                "x_session_id": session_id
             }
             task_id = str(uuid.uuid4())
             task_registry[task_id] = {
@@ -1190,10 +1192,10 @@ async def preprocess_patent_file(
                 }
             }
             # Log patent count in bypass mode
-            if x_session_id:
+            if session_id:
                 try:
                     from logger_handler import increment_patents_processed
-                    await increment_patents_processed(x_session_id, len(final_result["patents"]))
+                    await increment_patents_processed(session_id, len(final_result["patents"]))
                 except Exception:
                     pass
             return {"task_id": task_id, "file_id": file_id, "status": "completed"}
@@ -1225,7 +1227,7 @@ async def preprocess_patent_file(
         }
 
         # Store session_id for background task to log patent count
-        temp_storage[file_id] = {"x_session_id": x_session_id}
+        temp_storage[file_id] = {"x_session_id": session_id}
 
         background_tasks.add_task(
             run_preprocess_task,
@@ -1358,14 +1360,26 @@ async def ai_assist_criteria(req: AIAssistCriteriaRequest):
 temp_storage = {}
 
 @router.post("/api/mindmap/upload")
-async def upload_for_mindmap(file: UploadFile = File(...)):
+async def upload_for_mindmap(
+    file: UploadFile = File(...),
+    x_session_id: str = Form(default=""),
+    x_session_id_header: Optional[str] = Header(None, alias="X-Session-ID")
+):
     try:
+        session_id = x_session_id or x_session_id_header or ""
         file_id = str(uuid.uuid4())
         temp_dir = os.path.join(tempfile.gettempdir(), "mindmap", file_id)
         os.makedirs(temp_dir, exist_ok=True)
         file_path = os.path.join(temp_dir, file.filename)
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
+
+        if session_id:
+            try:
+                from logger_handler import add_uploaded_file
+                await add_uploaded_file(session_id, file.filename)
+            except Exception:
+                pass
         try:
             df = extract_patents_from_excel(file_path)
         except Exception as e:

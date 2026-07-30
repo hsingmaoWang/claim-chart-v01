@@ -181,30 +181,48 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
         excel_rows = []
         for r in rows:
             sid = r.get("session_id")
-            files_list = r.get("uploaded_files")
-            if isinstance(files_list, list):
-                files_str = ", ".join(files_list)
-            else:
-                files_str = str(files_list or "")
-                
+            
+            patents_processed = int(r.get("patents_processed") or 0)
+            excel_downloads = int(r.get("excel_downloads") or 0)
+            png_downloads = int(r.get("png_downloads") or 0)
             excel_bytes = int(r.get("excel_download_bytes") or 0)
             png_bytes = int(r.get("png_download_bytes") or 0)
             
-            # Fallback merge: if Supabase returns 0 (e.g. column missing or not updated), read from active memory or local Excel
+            # Combine uploaded files list preserving order and uniqueness
+            files_list = []
+            def add_files(f_input):
+                if isinstance(f_input, list):
+                    for f in f_input:
+                        if f and str(f).strip() and str(f).strip() not in files_list:
+                            files_list.append(str(f).strip())
+                elif f_input:
+                    for f in str(f_input).split(","):
+                        if f and f.strip() and f.strip() not in files_list:
+                            files_list.append(f.strip())
+
+            add_files(r.get("uploaded_files"))
+
+            # Fallback merge with active memory
             if sid in active_logs:
-                if excel_bytes == 0:
-                    excel_bytes = int(active_logs[sid].get("excel_download_bytes", 0))
-                if png_bytes == 0:
-                    png_bytes = int(active_logs[sid].get("png_download_bytes", 0))
-                    
+                act = active_logs[sid]
+                add_files(act.get("uploaded_files"))
+                patents_processed = max(patents_processed, int(act.get("patents_processed", 0)))
+                excel_downloads = max(excel_downloads, int(act.get("excel_downloads", 0)))
+                png_downloads = max(png_downloads, int(act.get("png_downloads", 0)))
+                excel_bytes = max(excel_bytes, int(act.get("excel_download_bytes", 0)))
+                png_bytes = max(png_bytes, int(act.get("png_download_bytes", 0)))
+
+            # Fallback merge with local Excel backup
             if not local_df.empty and "Session ID" in local_df.columns:
                 matches = local_df[local_df["Session ID"] == sid]
                 if not matches.empty:
                     loc_row = matches.iloc[0]
-                    if excel_bytes == 0:
-                        excel_bytes = int(loc_row.get("Excel Download Size (bytes)") or 0)
-                    if png_bytes == 0:
-                        png_bytes = int(loc_row.get("PNG Download Size (bytes)") or 0)
+                    add_files(loc_row.get("Uploaded Files"))
+                    patents_processed = max(patents_processed, int(loc_row.get("Patents Processed") or 0))
+                    excel_downloads = max(excel_downloads, int(loc_row.get("Excel Downloads") or 0))
+                    png_downloads = max(png_downloads, int(loc_row.get("PNG Downloads") or 0))
+                    excel_bytes = max(excel_bytes, int(loc_row.get("Excel Download Size (bytes)") or 0))
+                    png_bytes = max(png_bytes, int(loc_row.get("PNG Download Size (bytes)") or 0))
                 
             excel_rows.append({
                 "Session ID": sid,
@@ -213,10 +231,10 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
                 "Login Time": r.get("login_time") or "",
                 "Logout Time": r.get("logout_time") or "",
                 "Duration": r.get("duration", "00:00:00"),
-                "Uploaded Files": files_str,
-                "Patents Processed": int(r.get("patents_processed") or 0),
-                "Excel Downloads": int(r.get("excel_downloads") or 0),
-                "PNG Downloads": int(r.get("png_downloads") or 0),
+                "Uploaded Files": ", ".join(files_list),
+                "Patents Processed": patents_processed,
+                "Excel Downloads": excel_downloads,
+                "PNG Downloads": png_downloads,
                 "Excel Download Size (bytes)": excel_bytes,
                 "PNG Download Size (bytes)": png_bytes,
                 "Last Active Time": r.get("last_active_time") or "",
@@ -318,18 +336,13 @@ async def sync_log_to_supabase(session_id: str, record: dict) -> bool:
 
 async def sync_log_to_excel(session_id: str, record: dict):
     """
-    Sync or insert a single session log record to Supabase or Excel file.
+    Sync or insert a single session log record to Supabase and Excel file backup.
     """
-    supabase_success = False
     if is_supabase_enabled():
-        supabase_success = await sync_log_to_supabase(session_id, record)
+        await sync_log_to_supabase(session_id, record)
         
     try:
         async with get_excel_lock():
-            # If Supabase is enabled and sync succeeded, skip local Excel writing
-            if is_supabase_enabled() and supabase_success:
-                return
-            
             df = await read_all_logs_from_excel()
             
             # Clean record fields for Excel representation

@@ -360,3 +360,11 @@ footer {
   scrollbar-width: thin;
   scrollbar-color: rgba(8, 145, 178, 0.6) rgba(255, 255, 255, 0.4);
 }
+
+/* Force wait cursor during Excel download even when hovering buttons */
+body.downloading-excel,
+body.downloading-excel *,
+body.downloading-excel *:hover {
+  cursor: wait !important;
+}
+
