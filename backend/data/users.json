@@ -10,9 +10,10 @@
         "role": "user"
     },
     "hm.wang": {
-        "password_hash": "4bf4547caf617ce1d0af58580593bca880612042d671205b876895fc8394f87f",
-        "salt": "d27c29199e0641fc10a31ee2b8431b02",
-        "role": "user"
+        "password_hash": "c7e02e2868088dfa76af562839cb1f2a510f587d14f42929d1ce6eed20053aec",
+        "salt": "019618accac73a0b3b9e3d7f2d87c42e",
+        "role": "user",
+        "notes": ""
     },
     "cc_chang": {
         "password_hash": "2021310968c531b286b64e9f2473155f71dc2a4b56dc4d16c643f0b2c949831c",
