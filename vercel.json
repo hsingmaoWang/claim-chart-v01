@@ -9,6 +9,10 @@
       }
     },
     {
+      "src": "api/debug.py",
+      "use": "@vercel/python"
+    },
+    {
       "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
@@ -17,6 +21,7 @@
     }
   ],
   "routes": [
+    { "src": "/api/debug", "dest": "/api/debug.py" },
     { "src": "/api/(.*)", "dest": "/api/index.py" },
     { "src": "/assets/(.*)", "dest": "/frontend/assets/$1" },
     { "src": "/images/(.*)", "dest": "/frontend/images/$1" },

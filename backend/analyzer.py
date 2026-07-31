@@ -4,13 +4,19 @@ import base64
 import requests
 import ssl
 import httpx
-import truststore
 import re
 import json_repair
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+
+try:
+    import truststore
+    _truststore_available = True
+except Exception:
+    truststore = None  # type: ignore
+    _truststore_available = False
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
@@ -123,7 +129,7 @@ def send_openrouter_request(payload: dict, timeout: float = 60.0) -> dict:
     
     # Use standard SSL verification on Vercel/cloud, truststore on local machine if available
     verify_param = True
-    if not os.environ.get("VERCEL"):
+    if not os.environ.get("VERCEL") and _truststore_available and truststore is not None:
         try:
             verify_param = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         except Exception:
