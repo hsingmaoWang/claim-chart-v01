@@ -1,14 +1,17 @@
 """
-Lightweight debug endpoint - does NOT import backend.main at all.
-Used to diagnose FUNCTION_INVOCATION_FAILED before fixing imports.
+Lightweight diagnostic endpoint for Vercel deployment debugging.
 Access at: /api/debug
 """
 import sys
 import os
 import traceback
 
-def handler(request, response=None):
-    """Minimal WSGI handler for Vercel diagnostics."""
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/api/debug")
+def debug():
     results = {
         "python_version": sys.version,
         "platform": sys.platform,
@@ -22,33 +25,35 @@ def handler(request, response=None):
     }
 
     packages = [
-        "fastapi", "pydantic", "requests", "httpx",
-        "pandas", "openpyxl", "pdfplumber", "pypdf",
-        "beautifulsoup4", "google.genai", "dotenv",
-        "PIL", "json_repair", "truststore"
+        ("fastapi", "fastapi"),
+        ("pydantic", "pydantic"),
+        ("requests", "requests"),
+        ("httpx", "httpx"),
+        ("pandas", "pandas"),
+        ("openpyxl", "openpyxl"),
+        ("pdfplumber", "pdfplumber"),
+        ("pypdf", "pypdf"),
+        ("beautifulsoup4", "bs4"),
+        ("google-genai", "google.genai"),
+        ("python-dotenv", "dotenv"),
+        ("Pillow", "PIL"),
+        ("json-repair", "json_repair"),
+        ("truststore", "truststore"),
     ]
 
-    for pkg in packages:
+    for display_name, import_name in packages:
         try:
-            __import__(pkg)
-            results["import_tests"][pkg] = "OK"
+            __import__(import_name)
+            results["import_tests"][display_name] = "OK"
         except Exception as e:
-            results["import_tests"][pkg] = f"FAILED: {e}"
+            results["import_tests"][display_name] = f"FAILED: {e}"
 
-    # Try importing the main app
+    # Try importing the main backend app
     try:
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from backend.main import app
-        results["backend_import"] = "OK"
-    except Exception as e:
-        results["backend_import"] = f"FAILED: {traceback.format_exc()}"
+        from backend.main import app as main_app  # noqa: F401
+        results["backend_main_import"] = "OK"
+    except Exception:
+        results["backend_main_import"] = f"FAILED:\n{traceback.format_exc()}"
 
-    import json
-    body = json.dumps(results, indent=2, ensure_ascii=False)
-
-    # Vercel expects a tuple: (status_code, headers, body)
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": body
-    }
+    return results
