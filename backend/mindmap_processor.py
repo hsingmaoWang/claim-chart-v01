@@ -5,6 +5,7 @@ import uuid
 import pandas as pd
 import re
 from collections import Counter
+from typing import Optional
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
