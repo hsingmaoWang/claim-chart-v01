@@ -156,6 +156,36 @@ def calculate_duration(start_time_str: str, end_time_str: str) -> str:
         logger.error(f"Error calculating duration: {e}")
         return "00:00:00"
 
+def parse_meta_bytes(files_input) -> tuple:
+    """Parse fallback byte size metadata from uploaded_files list/string if native columns are missing."""
+    excel_bytes = 0
+    png_bytes = 0
+    clean_files = []
+    
+    file_items = []
+    if isinstance(files_input, list):
+        file_items = files_input
+    elif files_input:
+        file_items = str(files_input).split(",")
+
+    for f in file_items:
+        f_str = str(f).strip()
+        if f_str.startswith("_meta_bytes:"):
+            try:
+                parts = f_str.replace("_meta_bytes:", "").split(",")
+                for p in parts:
+                    if p.startswith("excel="):
+                        excel_bytes = max(excel_bytes, int(p.split("=")[1]))
+                    elif p.startswith("png="):
+                        png_bytes = max(png_bytes, int(p.split("=")[1]))
+            except Exception:
+                pass
+        elif f_str:
+            if f_str not in clean_files:
+                clean_files.append(f_str)
+
+    return excel_bytes, png_bytes, clean_files
+
 async def read_all_logs_from_supabase() -> pd.DataFrame:
     """Read all records from Supabase usage_logs table."""
     try:
@@ -189,40 +219,41 @@ async def read_all_logs_from_supabase() -> pd.DataFrame:
             png_bytes = int(r.get("png_download_bytes") or 0)
             
             # Combine uploaded files list preserving order and uniqueness
-            files_list = []
-            def add_files(f_input):
-                if isinstance(f_input, list):
-                    for f in f_input:
-                        if f and str(f).strip() and str(f).strip() not in files_list:
-                            files_list.append(str(f).strip())
-                elif f_input:
-                    for f in str(f_input).split(","):
-                        if f and f.strip() and f.strip() not in files_list:
-                            files_list.append(f.strip())
+            meta_excel_bytes, meta_png_bytes, clean_files_list = parse_meta_bytes(r.get("uploaded_files"))
+            if excel_bytes == 0:
+                excel_bytes = meta_excel_bytes
+            if png_bytes == 0:
+                png_bytes = meta_png_bytes
 
-            add_files(r.get("uploaded_files"))
+            files_list = clean_files_list
 
             # Fallback merge with active memory
             if sid in active_logs:
                 act = active_logs[sid]
-                add_files(act.get("uploaded_files"))
+                act_excel_bytes, act_png_bytes, act_files = parse_meta_bytes(act.get("uploaded_files"))
+                for f in act_files:
+                    if f and f not in files_list:
+                        files_list.append(f)
                 patents_processed = max(patents_processed, int(act.get("patents_processed", 0)))
                 excel_downloads = max(excel_downloads, int(act.get("excel_downloads", 0)))
                 png_downloads = max(png_downloads, int(act.get("png_downloads", 0)))
-                excel_bytes = max(excel_bytes, int(act.get("excel_download_bytes", 0)))
-                png_bytes = max(png_bytes, int(act.get("png_download_bytes", 0)))
+                excel_bytes = max(excel_bytes, int(act.get("excel_download_bytes", 0)), act_excel_bytes)
+                png_bytes = max(png_bytes, int(act.get("png_download_bytes", 0)), act_png_bytes)
 
             # Fallback merge with local Excel backup
             if not local_df.empty and "Session ID" in local_df.columns:
                 matches = local_df[local_df["Session ID"] == sid]
                 if not matches.empty:
                     loc_row = matches.iloc[0]
-                    add_files(loc_row.get("Uploaded Files"))
+                    loc_excel_bytes, loc_png_bytes, loc_files = parse_meta_bytes(loc_row.get("Uploaded Files"))
+                    for f in loc_files:
+                        if f and f not in files_list:
+                            files_list.append(f)
                     patents_processed = max(patents_processed, int(loc_row.get("Patents Processed") or 0))
                     excel_downloads = max(excel_downloads, int(loc_row.get("Excel Downloads") or 0))
                     png_downloads = max(png_downloads, int(loc_row.get("PNG Downloads") or 0))
-                    excel_bytes = max(excel_bytes, int(loc_row.get("Excel Download Size (bytes)") or 0))
-                    png_bytes = max(png_bytes, int(loc_row.get("PNG Download Size (bytes)") or 0))
+                    excel_bytes = max(excel_bytes, int(loc_row.get("Excel Download Size (bytes)") or 0), loc_excel_bytes)
+                    png_bytes = max(png_bytes, int(loc_row.get("PNG Download Size (bytes)") or 0), loc_png_bytes)
                 
             excel_rows.append({
                 "Session ID": sid,
@@ -299,6 +330,12 @@ async def sync_log_to_supabase(session_id: str, record: dict) -> bool:
             "Prefer": "resolution=merge-duplicates"
         }
         
+        raw_files = list(record.get("uploaded_files", []))
+        excel_bytes = int(record.get("excel_download_bytes", 0))
+        png_bytes = int(record.get("png_download_bytes", 0))
+        _, _, clean_files = parse_meta_bytes(raw_files)
+
+        # Main DB payload with native columns
         db_row = {
             "session_id": record.get("session_id"),
             "username": record.get("username"),
@@ -306,24 +343,32 @@ async def sync_log_to_supabase(session_id: str, record: dict) -> bool:
             "login_time": record.get("login_time") or None,
             "logout_time": record.get("logout_time") or None,
             "duration": record.get("duration", "00:00:00"),
-            "uploaded_files": record.get("uploaded_files", []),
+            "uploaded_files": clean_files,
             "patents_processed": int(record.get("patents_processed", 0)),
             "excel_downloads": int(record.get("excel_downloads", 0)),
             "png_downloads": int(record.get("png_downloads", 0)),
-            "excel_download_bytes": int(record.get("excel_download_bytes", 0)),
-            "png_download_bytes": int(record.get("png_download_bytes", 0)),
+            "excel_download_bytes": excel_bytes,
+            "png_download_bytes": png_bytes,
             "last_active_time": record.get("last_active_time") or None,
             "status": record.get("status", "active")
         }
         
         def do_post():
             res = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs?on_conflict=session_id", json=db_row, headers=headers, timeout=10)
-            if res.status_code == 400 and ("excel_download_bytes" in res.text or "png_download_bytes" in res.text):
-                # Fallback if Supabase schema cache hasn't updated columns yet
+            if res.status_code == 400 and ("excel_download_bytes" in res.text or "png_download_bytes" in res.text or "column" in res.text.lower()):
+                # Fallback if Supabase table columns excel_download_bytes / png_download_bytes don't exist yet.
+                # Embed bytes metadata in uploaded_files array so NO byte data is lost across Vercel deployments!
+                meta_tag = f"_meta_bytes:excel={excel_bytes},png={png_bytes}"
+                fallback_files = list(clean_files)
+                fallback_files.append(meta_tag)
+                
                 fallback_row = {k: v for k, v in db_row.items() if k not in ("excel_download_bytes", "png_download_bytes")}
+                fallback_row["uploaded_files"] = fallback_files
+                
                 res2 = requests.post(f"{SUPABASE_URL}/rest/v1/usage_logs?on_conflict=session_id", json=fallback_row, headers=headers, timeout=10)
                 res2.raise_for_status()
-                return False # Full byte sync failed due to missing Supabase columns
+                logger.info(f"Synced log to Supabase via metadata fallback: session={session_id}, excel_bytes={excel_bytes}, png_bytes={png_bytes}")
+                return False
             else:
                 res.raise_for_status()
                 return True
@@ -345,6 +390,9 @@ async def sync_log_to_excel(session_id: str, record: dict):
         async with get_excel_lock():
             df = await read_all_logs_from_excel()
             
+            raw_files = record.get("uploaded_files", [])
+            _, _, clean_files = parse_meta_bytes(raw_files)
+            
             # Clean record fields for Excel representation
             excel_row = {
                 "Session ID": record.get("session_id"),
@@ -353,7 +401,7 @@ async def sync_log_to_excel(session_id: str, record: dict):
                 "Login Time": record.get("login_time"),
                 "Logout Time": record.get("logout_time", ""),
                 "Duration": record.get("duration", "00:00:00"),
-                "Uploaded Files": ", ".join(record.get("uploaded_files", [])),
+                "Uploaded Files": ", ".join(clean_files),
                 "Patents Processed": int(record.get("patents_processed", 0)),
                 "Excel Downloads": int(record.get("excel_downloads", 0)),
                 "PNG Downloads": int(record.get("png_downloads", 0)),
@@ -402,9 +450,14 @@ async def get_or_restore_log_record(session_id: str) -> dict:
             rows = await asyncio.to_thread(do_get)
             if rows:
                 row = rows[0]
-                files_list = row.get("uploaded_files")
-                if not isinstance(files_list, list):
-                    files_list = []
+                excel_bytes = int(row.get("excel_download_bytes") or 0)
+                png_bytes = int(row.get("png_download_bytes") or 0)
+                meta_excel_bytes, meta_png_bytes, clean_files = parse_meta_bytes(row.get("uploaded_files"))
+                
+                if excel_bytes == 0:
+                    excel_bytes = meta_excel_bytes
+                if png_bytes == 0:
+                    png_bytes = meta_png_bytes
                     
                 record = {
                     "session_id": session_id,
@@ -413,12 +466,12 @@ async def get_or_restore_log_record(session_id: str) -> dict:
                     "login_time": row.get("login_time"),
                     "logout_time": row.get("logout_time"),
                     "duration": str(row.get("duration", "00:00:00")),
-                    "uploaded_files": files_list,
+                    "uploaded_files": clean_files,
                     "patents_processed": int(row.get("patents_processed") or 0),
                     "excel_downloads": int(row.get("excel_downloads") or 0),
                     "png_downloads": int(row.get("png_downloads") or 0),
-                    "excel_download_bytes": int(row.get("excel_download_bytes") or 0),
-                    "png_download_bytes": int(row.get("png_download_bytes") or 0),
+                    "excel_download_bytes": excel_bytes,
+                    "png_download_bytes": png_bytes,
                     "last_active_time": row.get("last_active_time"),
                     "status": str(row.get("status", "active"))
                 }
