@@ -944,14 +944,22 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   autosize: true,
                   paper_bgcolor: 'rgba(0,0,0,0)',
                   plot_bgcolor: 'rgba(0,0,0,0)',
-                  margin: { l: 160, r: 40, t: 60, b: 160 },
+                  margin: { l: 160, r: 40, t: 60, b: 180 },
                   xaxis: {
+                    type: 'category',
+                    tickmode: 'linear',
+                    dtick: 1,
+                    automargin: true,
                     tickangle: -45,
                     tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                     gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                     zeroline: false
                   },
                   yaxis: {
+                    type: 'category',
+                    tickmode: 'linear',
+                    dtick: 1,
+                    automargin: true,
                     tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                     gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                     zeroline: false
