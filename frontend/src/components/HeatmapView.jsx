@@ -950,7 +950,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                     type: 'category',
                     tickmode: 'array',
                     tickvals: matrixData.x,
-                    ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>↳ ')),
+                    ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>> ')),
                     automargin: true,
                     tickangle: -45,
                     tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
