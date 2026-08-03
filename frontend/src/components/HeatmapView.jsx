@@ -919,6 +919,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
               </div>
             ) : (
               <Plot
+                key={`heatmap_plot_${theme}_${matrixData.x.length}_${matrixData.y.length}`}
                 data={[{
                   z: matrixData.z,
                   x: matrixData.x,
@@ -947,8 +948,9 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   margin: { l: 160, r: 40, t: 60, b: 180 },
                   xaxis: {
                     type: 'category',
-                    tickmode: 'linear',
-                    dtick: 1,
+                    tickmode: 'array',
+                    tickvals: matrixData.x,
+                    ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>↳ ')),
                     automargin: true,
                     tickangle: -45,
                     tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
@@ -957,8 +959,9 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   },
                   yaxis: {
                     type: 'category',
-                    tickmode: 'linear',
-                    dtick: 1,
+                    tickmode: 'array',
+                    tickvals: matrixData.y,
+                    ticktext: matrixData.y,
                     automargin: true,
                     tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                     gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
