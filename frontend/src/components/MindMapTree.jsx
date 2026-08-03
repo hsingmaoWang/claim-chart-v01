@@ -159,47 +159,176 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
     }, [treeData, levelHierarchy]);
 
     const captureImage = useCallback(async () => {
-        const container = treeContainerRef.current;
-        if (!container) return;
+        const svgEl = svgRef.current;
+        if (!svgEl) return;
         try {
             const bgColor = theme === 'dark' ? '#0f172a' : '#ffffff';
 
-            // html2canvas with foreignObjectRendering:true is required because
-            // Markmap renders text labels inside <foreignObject> elements.
-            // SVG-blob-to-Image approach fails silently for security reasons.
-            const canvas = await html2canvas(container, {
-                backgroundColor: bgColor,
-                scale: 2,
-                useCORS: true,
-                allowTaint: true,
-                foreignObjectRendering: true,
-                logging: false,
-                ignoreElements: (el) =>
-                    (el.classList && el.classList.contains('app-bg')) ||
-                    el === document.querySelector('.side-navigation')
+            // Clone SVG element to avoid mutating visible DOM
+            const clonedSvg = svgEl.cloneNode(true);
+
+            // Calculate SVG content bounding box
+            let bbox;
+            try {
+                bbox = svgEl.getBBox();
+            } catch (e) {
+                bbox = { x: 0, y: 0, width: svgEl.clientWidth || 1000, height: svgEl.clientHeight || 800 };
+            }
+
+            const padding = 40;
+            const minX = bbox.x - padding;
+            const minY = bbox.y - padding;
+            const width = Math.max(bbox.width + padding * 2, 200);
+            const height = Math.max(bbox.height + padding * 2, 200);
+
+            clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            clonedSvg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`);
+            clonedSvg.setAttribute('width', width);
+            clonedSvg.setAttribute('height', height);
+            clonedSvg.style.position = 'static';
+            clonedSvg.style.transform = 'none';
+
+            // Insert background rectangle as first element
+            const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bgRect.setAttribute('x', minX);
+            bgRect.setAttribute('y', minY);
+            bgRect.setAttribute('width', width);
+            bgRect.setAttribute('height', height);
+            bgRect.setAttribute('fill', bgColor);
+            clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
+
+            // Convert <foreignObject> tags (containing HTML text labels) to SVG <text> elements
+            const originalFos = Array.from(svgEl.querySelectorAll('foreignObject'));
+            const clonedFos = Array.from(clonedSvg.querySelectorAll('foreignObject'));
+
+            clonedFos.forEach((fo, idx) => {
+                const origFo = originalFos[idx] || fo;
+                const rawText = (origFo.innerText || origFo.textContent || '').trim();
+
+                const foX = parseFloat(fo.getAttribute('x') || '0');
+                const foY = parseFloat(fo.getAttribute('y') || '0');
+
+                const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                textEl.setAttribute('x', foX + 4);
+                textEl.setAttribute('y', foY + 4);
+                textEl.setAttribute('dominant-baseline', 'hanging');
+                textEl.setAttribute('font-family', 'Inter, Roboto, system-ui, sans-serif');
+                textEl.setAttribute('font-size', '13px');
+                textEl.setAttribute('font-weight', '600');
+                textEl.setAttribute('fill', theme === 'dark' ? '#ffffff' : '#000000');
+
+                const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                if (lines.length === 0) {
+                    lines.push('');
+                }
+
+                lines.forEach((lineText, lIdx) => {
+                    const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+                    tspan.setAttribute('x', foX + 4);
+                    if (lIdx > 0) {
+                        tspan.setAttribute('dy', '1.3em');
+                    }
+                    tspan.textContent = lineText;
+                    textEl.appendChild(tspan);
+                });
+
+                if (fo.parentNode) {
+                    fo.parentNode.replaceChild(textEl, fo);
+                }
             });
 
-            const image = canvas.toDataURL('image/png');
-            const a = document.createElement('a');
-            a.href = image;
-            const now = new Date();
-            const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
-            a.download = `markmap_cyber_${timestamp}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            // Copy computed stroke styles for link paths
+            const originalPaths = Array.from(svgEl.querySelectorAll('path'));
+            const clonedPaths = Array.from(clonedSvg.querySelectorAll('path'));
+            clonedPaths.forEach((path, idx) => {
+                const origPath = originalPaths[idx];
+                if (origPath) {
+                    const compStyle = window.getComputedStyle(origPath);
+                    if (compStyle.stroke && compStyle.stroke !== 'none') {
+                        path.setAttribute('stroke', compStyle.stroke);
+                    }
+                    if (compStyle.strokeWidth) {
+                        path.setAttribute('stroke-width', compStyle.strokeWidth);
+                    }
+                    path.setAttribute('fill', 'none');
+                }
+            });
 
-            // Log PNG download usage event
-            if (authState?.session_id) {
-                const base64Data = image.split(',')[1] || '';
-                const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
-                const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
-                fetch('/api/usage/log-png', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
-                }).catch(err => console.error('Failed to log PNG download', err));
-            }
+            // Copy computed stroke & fill styles for node circles
+            const originalCircles = Array.from(svgEl.querySelectorAll('circle'));
+            const clonedCircles = Array.from(clonedSvg.querySelectorAll('circle'));
+            clonedCircles.forEach((circle, idx) => {
+                const origCircle = originalCircles[idx];
+                if (origCircle) {
+                    const compStyle = window.getComputedStyle(origCircle);
+                    if (compStyle.stroke && compStyle.stroke !== 'none') {
+                        circle.setAttribute('stroke', compStyle.stroke);
+                    }
+                    circle.setAttribute('fill', theme === 'dark' ? '#0f172a' : '#ffffff');
+                }
+            });
+
+            // Copy computed stroke styles for line elements (underlines)
+            const originalLines = Array.from(svgEl.querySelectorAll('line'));
+            const clonedLines = Array.from(clonedSvg.querySelectorAll('line'));
+            clonedLines.forEach((line, idx) => {
+                const origLine = originalLines[idx];
+                if (origLine) {
+                    const compStyle = window.getComputedStyle(origLine);
+                    if (compStyle.stroke && compStyle.stroke !== 'none') {
+                        line.setAttribute('stroke', compStyle.stroke);
+                    }
+                    if (compStyle.strokeWidth) {
+                        line.setAttribute('stroke-width', compStyle.strokeWidth);
+                    }
+                }
+            });
+
+            // Serialize SVG to data URL & draw onto Canvas
+            const svgString = new XMLSerializer().serializeToString(clonedSvg);
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+
+            const img = new Image();
+            img.onload = () => {
+                const scale = 2; // High-resolution render
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(width * scale);
+                canvas.height = Math.round(height * scale);
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = bgColor;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(url);
+
+                const image = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = image;
+                const now = new Date();
+                const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
+                a.download = `markmap_cyber_${timestamp}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // Log PNG download usage event
+                if (authState?.session_id) {
+                    const base64Data = image.split(',')[1] || '';
+                    const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
+                    const fileSizeBytes = Math.floor((base64Data.length * 3) / 4) - padding;
+                    fetch('/api/usage/log-png', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: authState.session_id, file_size_bytes: fileSizeBytes })
+                    }).catch(err => console.error('Failed to log PNG download', err));
+                }
+            };
+            img.onerror = (err) => {
+                console.error('Failed to load cloned SVG into Image', err);
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
         } catch (err) {
             console.error('Failed to capture image', err);
         }
