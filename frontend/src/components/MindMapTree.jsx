@@ -625,7 +625,7 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                         {selectedPatents.patents.map((p, i) => {
                             return (
                                 <div key={i} style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', marginBottom: '1rem', borderRadius: '0.5rem', border: '1px solid rgba(6,182,212,0.1)' }}>
-                                    <h4 style={{ color: '#67e8f9', margin: '0 0 0.8rem 0', fontSize: '1.1rem' }}>🔖 {p['專利公開公告號'] || '無號碼'}</h4>
+                                    <h4 style={{ color: '#67e8f9', margin: '0 0 0.8rem 0', fontSize: '1.1rem' }}>🔖 {i + 1}. {p['專利公開公告號'] || '無號碼'}</h4>
                                     <p style={{ fontSize: '0.9rem', marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.5' }}><strong style={{ color: '#e2e8f0' }}>💡 AI 技術簡述:</strong> <br /> {p['AI技術簡述']}</p>
                                     <p style={{ fontSize: '0.9rem', marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.5' }}><strong style={{ color: '#e2e8f0' }}>⚙️ 技術特徵手段:</strong> <br /> {p['技術特徵手段']}</p>
                                     <p style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0, lineHeight: '1.5' }}><strong style={{ color: '#e2e8f0' }}>✅ 解決問題/效益:</strong> <br /> {p['解決的技術問題或技術效益']}</p>

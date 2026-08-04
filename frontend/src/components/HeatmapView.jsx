@@ -1105,7 +1105,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                     alignItems: 'center',
                     gap: '0.4rem'
                   }}>
-                    🔖 {p['專利公開公告號'] || '無號碼'}
+                    🔖 {i + 1}. {p['專利公開公告號'] || '無號碼'}
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                     <p style={{ fontSize: '0.88rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.6' }}>
