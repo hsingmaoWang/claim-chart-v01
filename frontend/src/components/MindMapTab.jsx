@@ -804,7 +804,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   };
 
   return (
-    <div className="mindmap-container animate-fade-in" style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+    <div className="mindmap-container animate-fade-in" style={{ padding: '1.5rem', height: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', alignItems: 'center' }}>
 
       {appState === 'idle' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px', margin: '2rem auto', width: '100%' }}>
@@ -1431,7 +1431,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
       {
         appState === 'tree' && treeData && (
-          <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%' }}>
+          <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%', margin: '0 auto' }}>
 
             <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
