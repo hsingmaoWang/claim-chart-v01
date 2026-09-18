@@ -1,6 +1,7 @@
 import React, { useState, lazy, Suspense } from 'react';
 import Loader from './Loader';
 import MindMapTree from './MindMapTree';
+import ColumnSelectionModal from './ColumnSelectionModal';
 import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
@@ -12,6 +13,11 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [fileInfo, setFileInfo] = useState(null);
   const [treeData, setTreeData] = useState(null);
   const [loaderMessage, setLoaderMessage] = useState('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
+
+  // Column Selection Modal States
+  const [columnModalData, setColumnModalData] = useState(null);
+  const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
 
   const [config, setConfig] = useState({
     app_area_count: '3~7',
@@ -123,14 +129,60 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     if (!file) return;
 
     setAppState('preprocessing');
-    setLoaderMessage('AI 正在啟動專利讀取與預處理任務...');
+    setLoaderMessage('正在讀取專利 Excel 欄位資訊...');
     setErrorMessage('');
 
     const formData = new FormData();
     formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/mindmap/preview_columns', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        let errMessage = `Server error: ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) errMessage = errData.detail;
+        } catch (e) { }
+        throw new Error(errMessage);
+      }
+
+      const columnData = await response.json();
+      setColumnModalData(columnData);
+      setPendingFile(file);
+      setIsColumnModalOpen(true);
+      setAppState('idle');
+
+    } catch (err) {
+      console.error(err);
+      if (err.message && err.message.includes("上傳檔案無相關資料")) {
+        setWarningMessage(err.message);
+      } else {
+        setErrorMessage(err.message || '無法解析 Excel 欄位資訊。');
+      }
+      setAppState('idle');
+    }
+  };
+
+  const handleConfirmColumnSelection = async (selectedColumns) => {
+    setIsColumnModalOpen(false);
+    if (!columnModalData) return;
+
+    setAppState('preprocessing');
+    setLoaderMessage('AI 正在啟動專利讀取與預處理任務...');
+    setErrorMessage('');
+
+    const formData = new FormData();
+    formData.append('file_id_form', columnModalData.file_id || '');
+    if (pendingFile) {
+      formData.append('file', pendingFile);
+    }
+    formData.append('selected_columns', JSON.stringify(selectedColumns));
     formData.append('enable_screening', enableScreening);
     formData.append('screening_criteria', screeningCriteria);
-    // Pass session_id so backend can log file upload & patent count
     if (authState?.session_id) {
       formData.append('x_session_id', authState.session_id);
     }
@@ -153,7 +205,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       const data = await response.json();
       const taskId = data.task_id;
       const fileId = data.file_id;
-      setFileInfo({ file_id: fileId, filename: file.name });
+      setFileInfo({ file_id: fileId, filename: columnModalData.filename || pendingFile?.name });
 
       const pollInterval = setInterval(async () => {
         try {
@@ -1802,6 +1854,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
           </div>
         )
       }
+      <ColumnSelectionModal
+        isOpen={isColumnModalOpen}
+        onClose={() => setIsColumnModalOpen(false)}
+        onConfirm={handleConfirmColumnSelection}
+        columnData={columnModalData}
+      />
     </div >
   );
 };

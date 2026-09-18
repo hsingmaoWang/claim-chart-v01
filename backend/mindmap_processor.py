@@ -1142,17 +1142,67 @@ def detect_and_parse_bypass_excel(file_path, filename, file_id):
         return False, None
 
 
-@router.post("/api/mindmap/preprocess")
-async def preprocess_patent_file(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    enable_screening: bool = Form(False),
-    screening_criteria: str = Form(""),
-    x_session_id: str = Form(default=""),
-    x_session_id_header: Optional[str] = Header(None, alias="X-Session-ID")
-):
+def classify_excel_columns(df):
+    """
+    分類 Excel 欄位為：
+    1. required_columns (核心必要欄位 - 鎖定打勾)
+    2. ai_generated_columns (AI 生成欄位 - 隱藏)
+    3. selectable_columns (可選分析欄位 - 可自由勾選)
+    4. recommended_columns (推薦預設勾選之分析欄位)
+    """
+    all_cols = [str(c).strip() for c in df.columns if str(c).strip()]
+    
+    # AI 處理欄位 (隱藏)
+    ai_keywords = ["AI技術簡述", "技術特徵手段", "解決的技術問題或技術效益", "初篩結果"]
+    ai_cols = [c for c in all_cols if any(k in c for k in ai_keywords)]
+    
+    # 核心必要欄位 (鎖定必選)
+    required_keywords = [
+        "publication number", "專利號", "號",
+        "title", "標題", "名稱",
+        "abstract", "摘要",
+        "dwpi novelty", "新穎性",
+        "dwpi use", "用途",
+        "dwpi advantage", "優點",
+        "first claim", "claim", "申請專利範圍", "權利要求"
+    ]
+    
+    required_cols = []
+    for c in all_cols:
+        if c in ai_cols:
+            continue
+        c_lower = c.lower()
+        if any(k in c_lower for k in required_keywords):
+            required_cols.append(c)
+            
+    # 如果完全沒對應到 required，至少第一個欄位作為 required
+    if not required_cols and all_cols:
+        first_valid = [c for c in all_cols if c not in ai_cols]
+        if first_valid:
+            required_cols.append(first_valid[0])
+            
+    # 可選欄位 = 全部欄位 - AI欄位 - 必要欄位
+    selectable_cols = [c for c in all_cols if c not in ai_cols and c not in required_cols]
+    
+    # 推薦欄位 (智慧預先打勾的分析欄位)
+    rec_keywords = ["年", "日", "人", "權", "類", "對象", "國", "date", "year", "applicant", "assignee", "ipc", "cpc"]
+    recommended_cols = [c for c in selectable_cols if any(k in c.lower() for k in rec_keywords)]
+    
+    return {
+        "all_columns": all_cols,
+        "required_columns": required_cols,
+        "ai_generated_columns": ai_cols,
+        "selectable_columns": selectable_cols,
+        "recommended_columns": recommended_cols
+    }
+
+
+@router.post("/api/mindmap/preview_columns")
+async def preview_excel_columns(file: UploadFile = File(...)):
+    """
+    接收上傳的 Excel 檔案，讀取其所有欄位並劃分為「必選核心欄位」、「AI生成欄位(隱藏)」、「可選分析欄位」。
+    """
     try:
-        session_id = x_session_id or x_session_id_header or ""
         file_id = str(uuid.uuid4())
         temp_dir = os.path.join(tempfile.gettempdir(), "mindmap_preprocess", file_id)
         os.makedirs(temp_dir, exist_ok=True)
@@ -1160,11 +1210,72 @@ async def preprocess_patent_file(
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
 
+        df = extract_patents_from_excel(file_path)
+        if df.empty:
+            raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
+        column_info = classify_excel_columns(df)
+        column_info["file_id"] = file_id
+        column_info["filename"] = file.filename
+        
+        # 暫存已上傳檔案路徑，後續 preprocess 可重用
+        temp_storage[file_id] = {
+            "file_path": file_path,
+            "filename": file.filename,
+            "df_raw": df
+        }
+        
+        return column_info
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Preview columns failed: {e}")
+        raise HTTPException(status_code=500, detail=f"解析 Excel 欄位失敗: {str(e)}")
+
+
+@router.post("/api/mindmap/preprocess")
+async def preprocess_patent_file(
+    background_tasks: BackgroundTasks,
+    file: Optional[UploadFile] = File(None),
+    file_id_form: str = Form(""),
+    selected_columns: str = Form("[]"),
+    enable_screening: bool = Form(False),
+    screening_criteria: str = Form(""),
+    x_session_id: str = Form(default=""),
+    x_session_id_header: Optional[str] = Header(None, alias="X-Session-ID")
+):
+    try:
+        session_id = x_session_id or x_session_id_header or ""
+        file_id = file_id_form.strip()
+        
+        # 如果帶有 file_id 且已被 preview 暫存過
+        if file_id and file_id in temp_storage and "file_path" in temp_storage[file_id]:
+            file_path = temp_storage[file_id]["file_path"]
+            filename = temp_storage[file_id]["filename"]
+        elif file is not None:
+            file_id = str(uuid.uuid4())
+            temp_dir = os.path.join(tempfile.gettempdir(), "mindmap_preprocess", file_id)
+            os.makedirs(temp_dir, exist_ok=True)
+            file_path = os.path.join(temp_dir, file.filename)
+            with open(file_path, "wb") as buffer:
+                buffer.write(await file.read())
+            filename = file.filename
+        else:
+            raise HTTPException(status_code=400, detail="請上傳 Excel 檔案或提供有效的 file_id")
+
+        # 解析選取欄位
+        try:
+            parsed_selected_cols = json.loads(selected_columns) if isinstance(selected_columns, str) else selected_columns
+            if not isinstance(parsed_selected_cols, list):
+                parsed_selected_cols = []
+        except Exception:
+            parsed_selected_cols = []
+
         # Log uploaded filename to session
         if session_id:
             try:
                 from logger_handler import add_uploaded_file
-                await add_uploaded_file(session_id, file.filename)
+                await add_uploaded_file(session_id, filename)
             except Exception as e:
                 logger.warning(f"Failed to log uploaded file: {e}")
             
