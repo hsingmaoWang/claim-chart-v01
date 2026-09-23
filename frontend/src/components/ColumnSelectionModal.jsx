@@ -14,6 +14,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
 
   // State for user checked selectable columns
   const [selectedCols, setSelectedCols] = useState([]);
+  const [enableScreening, setEnableScreening] = useState(false);
 
   // Initialize selected columns with recommended columns
   useEffect(() => {
@@ -54,7 +55,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
   const handleConfirm = () => {
     // Combine required columns and user selected columns
     const finalSelected = Array.from(new Set([...required_columns, ...selectedCols]));
-    onConfirm(finalSelected);
+    onConfirm(finalSelected, enableScreening);
   };
 
   return (
@@ -357,48 +358,63 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '12px'
+          gap: '12px',
+          flexWrap: 'wrap'
         }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '9px 18px',
-              borderRadius: '8px',
-              backgroundColor: 'transparent',
-              color: '#94a3b8',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            取消
-          </button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '8px', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={enableScreening}
+              onChange={(e) => setEnableScreening(e.target.checked)}
+              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3b82f6' }}
+            />
+            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: enableScreening ? '#60a5fa' : '#94a3b8' }}>
+              🔍 接續進行落入範圍初篩設定 (Scope Screening)
+            </span>
+          </label>
 
-          <button
-            type="button"
-            onClick={handleConfirm}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '9px 22px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-              color: '#ffffff',
-              border: 'none',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Sparkles size={16} />
-            <span>確定並開始預處理</span>
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '9px 18px',
+                borderRadius: '8px',
+                backgroundColor: 'transparent',
+                color: '#94a3b8',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              取消
+            </button>
+
+            <button
+              type="button"
+              onClick={handleConfirm}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 22px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Sparkles size={16} />
+              <span>{enableScreening ? '下一步：初篩設定' : '確定並開始預處理'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

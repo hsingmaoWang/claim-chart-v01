@@ -18,6 +18,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [columnModalData, setColumnModalData] = useState(null);
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
+  const [selectedColumnsState, setSelectedColumnsState] = useState([]);
 
   const [config, setConfig] = useState({
     app_area_count: '3~7',
@@ -167,22 +168,19 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     }
   };
 
-  const handleConfirmColumnSelection = async (selectedColumns) => {
-    setIsColumnModalOpen(false);
-    if (!columnModalData) return;
-
+  const executePreprocess = async (selectedCols, isScreeningEnabled, criteriaText) => {
     setAppState('preprocessing');
     setLoaderMessage('AI 正在啟動專利讀取與預處理任務...');
     setErrorMessage('');
 
     const formData = new FormData();
-    formData.append('file_id_form', columnModalData.file_id || '');
+    formData.append('file_id_form', columnModalData?.file_id || '');
     if (pendingFile) {
       formData.append('file', pendingFile);
     }
-    formData.append('selected_columns', JSON.stringify(selectedColumns));
-    formData.append('enable_screening', enableScreening);
-    formData.append('screening_criteria', screeningCriteria);
+    formData.append('selected_columns', JSON.stringify(selectedCols || []));
+    formData.append('enable_screening', isScreeningEnabled);
+    formData.append('screening_criteria', criteriaText || '');
     if (authState?.session_id) {
       formData.append('x_session_id', authState.session_id);
     }
@@ -205,7 +203,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       const data = await response.json();
       const taskId = data.task_id;
       const fileId = data.file_id;
-      setFileInfo({ file_id: fileId, filename: columnModalData.filename || pendingFile?.name });
+      setFileInfo({ file_id: fileId, filename: columnModalData?.filename || pendingFile?.name });
 
       const pollInterval = setInterval(async () => {
         try {
@@ -244,6 +242,22 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
         setErrorMessage(err.message || 'Error occurred during preprocessing.');
       }
       setAppState('idle');
+    }
+  };
+
+  const handleConfirmColumnSelection = async (selectedColumns, enableScreeningChoice) => {
+    setIsColumnModalOpen(false);
+    if (!columnModalData) return;
+
+    setSelectedColumnsState(selectedColumns);
+    setEnableScreening(enableScreeningChoice);
+
+    if (enableScreeningChoice) {
+      // Step 2: Show Scope Screening Settings setup page
+      setAppState('screening_setup');
+    } else {
+      // Skip screening setup page and launch preprocess immediately
+      await executePreprocess(selectedColumns, false, '');
     }
   };
 
@@ -887,107 +901,125 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             </div>
             {errorMessage && <p style={{ color: 'var(--color-error)', marginTop: '1.5rem', fontWeight: '500' }}>{errorMessage}</p>}
           </div>
+        </div>
+      )}
 
-          <div className="glass-panel" style={{ padding: '1.5rem 2rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+      {appState === 'screening_setup' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px', margin: '2rem auto', width: '100%' }}>
+          <div className="glass-panel" style={{ padding: '2rem 2.5rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: 'var(--color-text)' }}>
                 🔍 落入範圍初篩設定 (Scope Screening Settings)
               </h3>
-              <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  checked={enableScreening}
-                  onChange={(e) => setEnableScreening(e.target.checked)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                />
-                <span style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>啟用初篩作業</span>
-              </label>
+              <span style={{ fontSize: '0.8rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.15)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                步驟 2 / 2
+              </span>
             </div>
 
-            {enableScreening && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>
-                    選擇初篩準則類型 (Select Screening Criteria Type)
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+                  選擇初篩準則類型 (Select Screening Criteria Type)
+                </label>
+                <select
+                  value={selectedTemplate}
+                  onChange={handleTemplateChange}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.8rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--color-border)',
+                    background: 'rgba(255,255,255,0.08)',
+                    color: '#CCEEFF',
+                    outline: 'none',
+                    fontSize: '0.95rem'
+                  }}
+                >
+                  <option value="" style={{ background: '#011331ff' }}>-- 請選擇準則類型或自行輸入 --</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id} style={{ background: '#011331ff' }}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', margin: 0 }}>
+                    篩選準則內容 (Screening Criteria)
                   </label>
-                  <select
-                    value={selectedTemplate}
-                    onChange={handleTemplateChange}
+                  <button
+                    onClick={handleAIAssist}
+                    disabled={!screeningCriteria.trim() || isGeneratingCriteria}
                     style={{
-                      width: '100%',
-                      padding: '0.6rem',
+                      padding: '0.4rem 1.2rem',
                       borderRadius: '0.5rem',
-                      border: '1px solid var(--color-border)',
-                      background: 'rgba(255,255,255,0.08)',
-                      color: '#CCEEFF',
-                      outline: 'none',
-                      fontSize: '0.9rem'
+                      background: (!screeningCriteria.trim() || isGeneratingCriteria)
+                        ? 'rgba(255,255,255,0.1)'
+                        : 'linear-gradient(135deg, #0891b2, #1d4ed8)',
+                      color: (!screeningCriteria.trim() || isGeneratingCriteria)
+                        ? 'rgba(255,255,255,0.3)'
+                        : 'white',
+                      border: 'none',
+                      cursor: (!screeningCriteria.trim() || isGeneratingCriteria)
+                        ? 'not-allowed'
+                        : 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '0.85rem',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.4rem',
+                      boxShadow: (!screeningCriteria.trim() || isGeneratingCriteria)
+                        ? 'none'
+                        : '0 4px 10px rgba(8,145,178,0.3)',
+                      transition: 'all 200ms ease'
                     }}
                   >
-                    <option value="" style={{ background: '#011331ff' }}>-- 請選擇準則類型或自行輸入 --</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.id} style={{ background: '#011331ff' }}>{t.name}</option>
-                    ))}
-                  </select>
+                    {isGeneratingCriteria ? '生成中...' : '🪄 AI輔助'}
+                  </button>
                 </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <label style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--color-text-muted)', margin: 0 }}>
-                      篩選準則內容 (Screening Criteria)
-                    </label>
-                    <button
-                      onClick={handleAIAssist}
-                      disabled={!screeningCriteria.trim() || isGeneratingCriteria}
-                      style={{
-                        padding: '0.4rem 1.2rem',
-                        borderRadius: '0.5rem',
-                        background: (!screeningCriteria.trim() || isGeneratingCriteria)
-                          ? 'rgba(255,255,255,0.1)'
-                          : 'linear-gradient(135deg, #0891b2, #1d4ed8)',
-                        color: (!screeningCriteria.trim() || isGeneratingCriteria)
-                          ? 'rgba(255,255,255,0.3)'
-                          : 'white',
-                        border: 'none',
-                        cursor: (!screeningCriteria.trim() || isGeneratingCriteria)
-                          ? 'not-allowed'
-                          : 'pointer',
-                        fontWeight: 'bold',
-                        fontSize: '0.85rem',
-                        whiteSpace: 'nowrap',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.4rem',
-                        boxShadow: (!screeningCriteria.trim() || isGeneratingCriteria)
-                          ? 'none'
-                          : '0 4px 10px rgba(8,145,178,0.3)',
-                        transition: 'all 200ms ease'
-                      }}
-                    >
-                      {isGeneratingCriteria ? '生成中...' : '🪄 AI輔助'}
-                    </button>
-                  </div>
-                  <textarea
-                    rows={9}
-                    value={screeningCriteria}
-                    onChange={(e) => setScreeningCriteria(e.target.value)}
-                    placeholder="請依據準則類型，輸入初篩判定準則；或可輸入技術Keywords後，點擊AI輔助按鈕生成技術描述內容..."
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem',
-                      borderRadius: '0.5rem',
-                      border: '1px solid var(--color-border)',
-                      background: 'rgba(255,255,255,0.08)',
-                      color: 'var(--color-text)',
-                      outline: 'none',
-                      fontSize: '0.9rem',
-                      resize: 'none'
-                    }}
-                  />
-                </div>
+                <textarea
+                  rows={8}
+                  value={screeningCriteria}
+                  onChange={(e) => setScreeningCriteria(e.target.value)}
+                  placeholder="請依據準則類型，輸入初篩判定準則；或可輸入技術Keywords後，點擊AI輔助按鈕生成技術描述內容..."
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--color-border)',
+                    background: 'rgba(255,255,255,0.08)',
+                    color: 'var(--color-text)',
+                    outline: 'none',
+                    fontSize: '0.95rem',
+                    resize: 'none',
+                    lineHeight: 1.5
+                  }}
+                />
               </div>
-            )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
+              <button
+                onClick={() => {
+                  setIsColumnModalOpen(true);
+                  setAppState('idle');
+                }}
+                className="btn-secondary"
+                style={{ padding: '0.6rem 1.4rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}
+              >
+                <ArrowLeft size={16} /> 上一步 (重新選取欄位)
+              </button>
+
+              <button
+                onClick={() => executePreprocess(selectedColumnsState, true, screeningCriteria)}
+                className="btn-primary"
+                style={{ padding: '0.65rem 2rem', borderRadius: '0.5rem', fontSize: '0.95rem', background: 'var(--color-primary)', border: 'none', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 10px var(--color-primary-glow)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <Sparkles size={16} /> 🚀 開始預處理與初篩
+              </button>
+            </div>
           </div>
         </div>
       )}
