@@ -459,7 +459,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const coolwarmScale = [
     [0.0, '#3b4cc0'],
     [0.25, '#7faef0'],
-    [0.5, '#f7f7f7'],
+    [0.5, '#adfb05ff'],
     [0.75, '#f4a582'],
     [1.0, '#b2182b']
   ];
@@ -845,64 +845,11 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           transition: 'all 0.3s ease'
         }}>
 
-          {/* Theme switcher */}
-          <div style={{
-            position: 'absolute',
-            top: '1rem',
-            right: '1.25rem',
-            zIndex: 10,
-            background: 'rgba(0,0,0,0.5)',
-            padding: '0.4rem',
-            borderRadius: '2rem',
-            display: 'flex',
-            gap: '0.4rem',
-            border: '1px solid rgba(255,255,255,0.1)'
-          }}>
-            <button
-              title="不透明黑色"
-              onClick={() => setTheme('dark')}
-              style={{
-                background: theme === 'dark' ? '#0ea5e9' : 'transparent',
-                border: 'none',
-                color: '#fff',
-                borderRadius: '50%',
-                width: '28px',
-                height: '28px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              <Moon size={14} />
-            </button>
-            <button
-              title="不透明白色"
-              onClick={() => setTheme('light')}
-              style={{
-                background: theme === 'light' ? '#0ea5e9' : 'transparent',
-                border: 'none',
-                color: '#fff',
-                borderRadius: '50%',
-                width: '28px',
-                height: '28px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              <Sun size={14} />
-            </button>
-          </div>
-
           {/* Chart title bar */}
           <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                {chartType === 'heatmap' ? '🔥 專利相關性Heatmap' : '🫧 專利數量Bubble Plot (氣泡圖)'}
+                {chartType === 'heatmap' ? '🔥 專利分佈 Heatmap' : '🫧 專利分佈 Bubble Plot (氣泡圖)'}
               </h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)' }}>
                 {hasData
@@ -967,6 +914,55 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   ✂️ 已過濾 {removedCols + removedRows} 個空行/列
                 </div>
               )}
+
+              {/* Theme switcher */}
+              <div style={{
+                background: theme === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.06)',
+                padding: '2px',
+                borderRadius: '2rem',
+                display: 'flex',
+                gap: '0.2rem',
+                border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
+              }}>
+                <button
+                  title="夜間模式"
+                  onClick={() => setTheme('dark')}
+                  style={{
+                    background: theme === 'dark' ? '#0ea5e9' : 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '26px',
+                    height: '26px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Moon size={13} />
+                </button>
+                <button
+                  title="日間模式"
+                  onClick={() => setTheme('light')}
+                  style={{
+                    background: theme === 'light' ? '#0ea5e9' : 'transparent',
+                    border: 'none',
+                    color: theme === 'light' ? '#fff' : '#475569',
+                    borderRadius: '50%',
+                    width: '26px',
+                    height: '26px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Sun size={13} />
+                </button>
+              </div>
             </div>
           </div>
 
