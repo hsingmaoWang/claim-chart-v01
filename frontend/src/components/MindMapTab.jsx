@@ -1540,7 +1540,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     transition: 'all 0.2s'
                   }}
                 >
-                  Heatmap
+                  相關性圖表
                 </button>
               </div>
 

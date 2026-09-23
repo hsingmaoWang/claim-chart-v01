@@ -281,6 +281,7 @@ const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform }) => {
 // ─── Main HeatmapView component ───────────────────────────────────────────────
 const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const [theme, setTheme] = useState('dark');
+  const [chartType, setChartType] = useState('heatmap'); // 'heatmap' | 'bubble'
   const heatmapContainerRef = useRef(null);
 
   // Extract patents from treeData
@@ -483,6 +484,31 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     });
     return list;
   }, [matrixData]);
+
+  // Flattened data calculation for Bubble Plot
+  const bubbleData = useMemo(() => {
+    if (!matrixData?.z?.length) return { xs: [], ys: [], sizes: [], colors: [], texts: [], maxVal: 1 };
+    const xs = [];
+    const ys = [];
+    const sizes = [];
+    const colors = [];
+    const texts = [];
+
+    matrixData.z.forEach((row, yi) => {
+      row.forEach((val, xi) => {
+        if (val > 0 || showEmpty) {
+          xs.push(matrixData.x[xi]);
+          ys.push(matrixData.y[yi]);
+          sizes.push(val);
+          colors.push(val);
+          texts.push(val > 0 ? String(val) : '');
+        }
+      });
+    });
+
+    const maxVal = Math.max(...sizes, 1);
+    return { xs, ys, sizes, colors, texts, maxVal };
+  }, [matrixData, showEmpty]);
 
   // DnD handlers
   const handleDragStart = useCallback((event) => {
@@ -873,10 +899,10 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           </div>
 
           {/* Chart title bar */}
-          <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
-                🔥 專利相關性Heatmap
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {chartType === 'heatmap' ? '🔥 專利相關性Heatmap' : '🫧 專利數量Bubble Plot (氣泡圖)'}
               </h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)' }}>
                 {hasData
@@ -884,19 +910,64 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   : '請在左側配置 X 軸與 Y 軸維度'}
               </p>
             </div>
-            {hasData && !showEmpty && (removedCols > 0 || removedRows > 0) && (
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* Chart Type Segmented Control */}
               <div style={{
-                fontSize: '0.72rem',
-                color: 'rgba(251,191,36,0.8)',
-                background: 'rgba(251,191,36,0.08)',
-                border: '1px solid rgba(251,191,36,0.2)',
-                borderRadius: '0.4rem',
-                padding: '0.3rem 0.65rem',
-                whiteSpace: 'nowrap'
+                display: 'inline-flex',
+                background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                borderRadius: '0.5rem',
+                padding: '2px',
+                border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
               }}>
-                ✂️ 已過濾 {removedCols + removedRows} 個空行/列
+                <button
+                  onClick={() => setChartType('heatmap')}
+                  style={{
+                    padding: '0.35rem 0.85rem',
+                    borderRadius: '0.4rem',
+                    background: chartType === 'heatmap' ? '#0ea5e9' : 'transparent',
+                    border: 'none',
+                    color: chartType === 'heatmap' ? '#ffffff' : (theme === 'dark' ? '#cbd5e1' : '#475569'),
+                    fontWeight: '700',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  🔥 熱圖
+                </button>
+                <button
+                  onClick={() => setChartType('bubble')}
+                  style={{
+                    padding: '0.35rem 0.85rem',
+                    borderRadius: '0.4rem',
+                    background: chartType === 'bubble' ? '#0ea5e9' : 'transparent',
+                    border: 'none',
+                    color: chartType === 'bubble' ? '#ffffff' : (theme === 'dark' ? '#cbd5e1' : '#475569'),
+                    fontWeight: '700',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  🫧 氣泡圖
+                </button>
               </div>
-            )}
+
+              {hasData && !showEmpty && (removedCols > 0 || removedRows > 0) && (
+                <div style={{
+                  fontSize: '0.72rem',
+                  color: 'rgba(251,191,36,0.8)',
+                  background: 'rgba(251,191,36,0.08)',
+                  border: '1px solid rgba(251,191,36,0.2)',
+                  borderRadius: '0.4rem',
+                  padding: '0.3rem 0.65rem',
+                  whiteSpace: 'nowrap'
+                }}>
+                  ✂️ 已過濾 {removedCols + removedRows} 個空行/列
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Heatmap or empty state */}
@@ -917,14 +988,37 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 <div style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.4rem', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>尚未選擇維度</div>
                 <div style={{ fontSize: '0.85rem' }}>請將至少一個維度拖曳到 X 軸，<br />並選擇一個維度作為 Y 軸。</div>
               </div>
-            ) : (
-              <Plot
-                key={`heatmap_plot_${theme}_${matrixData.x.length}_${matrixData.y.length}`}
-                data={[{
-                  z: matrixData.z,
-                  x: matrixData.x,
-                  y: matrixData.y,
-                  type: 'heatmap',
+            ) : (() => {
+              const maxBubblePx = 42;
+              const sizeref = (2 * bubbleData.maxVal) / (maxBubblePx ** 2);
+
+              const plotData = chartType === 'heatmap' ? [{
+                z: matrixData.z,
+                x: matrixData.x,
+                y: matrixData.y,
+                type: 'heatmap',
+                colorscale: coolwarmScale,
+                showscale: true,
+                colorbar: {
+                  tickfont: { color: theme === 'dark' ? '#cbd5e1' : '#334155', family: 'Outfit, Inter, sans-serif', size: 10 },
+                  thickness: 14,
+                  len: 0.8
+                },
+                hovertemplate:
+                  '<b>X 軸 (技術)</b>: %{x}<br>' +
+                  '<b>Y 軸 (功效)</b>: %{y}<br>' +
+                  '<b>專利件數</b>: %{z} 件<extra></extra>'
+              }] : [{
+                x: bubbleData.xs,
+                y: bubbleData.ys,
+                mode: 'markers+text',
+                type: 'scatter',
+                marker: {
+                  size: bubbleData.sizes,
+                  sizemode: 'area',
+                  sizeref: sizeref > 0 ? sizeref : 1,
+                  sizemin: 6,
+                  color: bubbleData.colors,
                   colorscale: coolwarmScale,
                   showscale: true,
                   colorbar: {
@@ -932,49 +1026,69 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                     thickness: 14,
                     len: 0.8
                   },
-                  hovertemplate:
-                    '<b>X 軸 (技術)</b>: %{x}<br>' +
-                    '<b>Y 軸 (功效)</b>: %{y}<br>' +
-                    '<b>專利件數</b>: %{z} 件<extra></extra>'
-                }]}
-                layout={{
-                  title: {
-                    text: `${yAxisDim} vs ${xAxisDims.join(' > ')}`,
-                    font: { family: 'Outfit, Inter, system-ui, sans-serif', size: 16, color: theme === 'dark' ? '#cbd5e1' : '#1e293b' }
-                  },
-                  autosize: true,
-                  paper_bgcolor: 'rgba(0,0,0,0)',
-                  plot_bgcolor: 'rgba(0,0,0,0)',
-                  margin: { l: 160, r: 40, t: 60, b: 180 },
-                  xaxis: {
-                    type: 'category',
-                    tickmode: 'array',
-                    tickvals: matrixData.x,
-                    ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>> ')),
-                    automargin: true,
-                    tickangle: -45,
-                    tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
-                    gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                    zeroline: false
-                  },
-                  yaxis: {
-                    type: 'category',
-                    tickmode: 'array',
-                    tickvals: matrixData.y,
-                    ticktext: matrixData.y,
-                    automargin: true,
-                    tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
-                    gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                    zeroline: false
-                  },
-                  annotations: cellAnnotations
-                }}
-                config={{ responsive: true, displayModeBar: false, doubleClick: false }}
-                onClick={handlePlotClick}
-                useResizeHandler={true}
-                style={{ width: '100%', height: '100%' }}
-              />
-            )}
+                  line: {
+                    color: theme === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)',
+                    width: 1
+                  }
+                },
+                text: bubbleData.texts,
+                textposition: 'middle center',
+                textfont: {
+                  size: 11,
+                  family: 'Outfit, Inter, system-ui, sans-serif',
+                  color: '#ffffff'
+                },
+                hovertemplate:
+                  '<b>X 軸 (技術)</b>: %{x}<br>' +
+                  '<b>Y 軸 (功效)</b>: %{y}<br>' +
+                  '<b>專利件數</b>: %{marker.size} 件<extra></extra>'
+              }];
+
+              const plotLayout = {
+                title: {
+                  text: `${yAxisDim} vs ${xAxisDims.join(' > ')}${chartType === 'bubble' ? ' (氣泡大小表專利件數)' : ''}`,
+                  font: { family: 'Outfit, Inter, system-ui, sans-serif', size: 16, color: theme === 'dark' ? '#cbd5e1' : '#1e293b' }
+                },
+                autosize: true,
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 160, r: 40, t: 60, b: 180 },
+                xaxis: {
+                  type: 'category',
+                  tickmode: 'array',
+                  tickvals: matrixData.x,
+                  ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>> ')),
+                  automargin: true,
+                  tickangle: -45,
+                  tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
+                  gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  zeroline: false
+                },
+                yaxis: {
+                  type: 'category',
+                  tickmode: 'array',
+                  tickvals: matrixData.y,
+                  ticktext: matrixData.y,
+                  automargin: true,
+                  tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
+                  gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  zeroline: false
+                },
+                annotations: chartType === 'heatmap' ? cellAnnotations : []
+              };
+
+              return (
+                <Plot
+                  key={`plot_${chartType}_${theme}_${matrixData.x.length}_${matrixData.y.length}`}
+                  data={plotData}
+                  layout={plotLayout}
+                  config={{ responsive: true, displayModeBar: false, doubleClick: false }}
+                  onClick={handlePlotClick}
+                  useResizeHandler={true}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              );
+            })()}
           </div>
         </div>
 
