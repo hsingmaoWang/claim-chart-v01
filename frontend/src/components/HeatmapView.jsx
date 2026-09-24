@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
-import html2canvas from 'html2canvas'; // kept for potential fallback use
 import {
   DndContext,
   closestCenter,
@@ -20,22 +19,75 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, X as XIcon, Sun, Moon } from 'lucide-react';
+import { GripVertical, X as XIcon, Sun, Moon, Settings } from 'lucide-react';
+import HeatmapSettingsModal from './HeatmapSettingsModal';
 
 const Plot = createPlotlyComponent(Plotly);
 
-// All available dimension definitions
-const ALL_DIMENSIONS = [
-  { id: '應用領域', label: '應用領域', emoji: '🎯' },
-  { id: '技術1階', label: '技術1階', emoji: '🔧' },
-  { id: '技術2階', label: '技術2階', emoji: '⚙️' },
-  { id: '技術3階', label: '技術3階', emoji: '🔩' },
-  { id: '功效節點', label: '功效節點', emoji: '⚡' },
+// Base dimensions taxonomy
+const BASE_DIMENSIONS = [
+  { id: '技術1階', label: '技術1階', emoji: '🔧', isExcel: false },
+  { id: '技術2階', label: '技術2階', emoji: '⚙️', isExcel: false },
+  { id: '技術3階', label: '技術3階', emoji: '🔩', isExcel: false },
+  { id: '功效節點', label: '功效節點', emoji: '⚡', isExcel: false },
+  { id: '應用領域', label: '應用領域', emoji: '🎯', isExcel: false },
 ];
 
+// Helper to extract all available fields (Base taxonomy + Excel expanded columns)
+const getAvailableDimensions = (patents) => {
+  const result = [...BASE_DIMENSIONS];
+  if (!patents || patents.length === 0) return result;
+
+  const baseIds = new Set(BASE_DIMENSIONS.map(d => d.id));
+  const ignoredKeys = new Set([
+    '專利公開公告號', 'AI技術簡述', '技術特徵手段', '解決的技術問題或技術效益',
+    'summary_title', 'mind_map_title', 'id', '_id'
+  ]);
+
+  const excelKeys = new Set();
+  patents.forEach(p => {
+    Object.keys(p).forEach(key => {
+      if (!baseIds.has(key) && !ignoredKeys.has(key)) {
+        excelKeys.add(key);
+      }
+    });
+  });
+
+  excelKeys.forEach(key => {
+    let emoji = '📊';
+    if (['Optimized Assignee', '專利權人', '權利人', '申請人'].includes(key)) emoji = '🏢';
+    else if (['申請年', '申請日'].includes(key)) emoji = '📅';
+    else if (['國別', '公開國', '權利國別'].includes(key)) emoji = '🌐';
+    else if (['IPC', '專利分類號'].includes(key)) emoji = '🏷️';
+
+    result.push({
+      id: key,
+      label: key,
+      emoji: emoji,
+      isExcel: true
+    });
+  });
+
+  return result;
+};
+
 // Normalize a dimension value to an array of trimmed, non-empty strings
-const normalizeDimensionValue = (val) => {
+const normalizeDimensionValue = (p, dim) => {
+  if (!p || !dim) return ['其他'];
+  let val = p[dim];
+
+  // Fallbacks for common aliases
+  if (val === undefined || val === null || val === '') {
+    if (dim === 'Optimized Assignee') val = p['專利權人'] || p['權利人'] || p['申請人'];
+    else if (dim === '申請年' || dim === '申請日') {
+      val = p['申請年'] || (p['申請日'] ? String(p['申請日']).slice(0, 4) : null);
+    } else if (dim === '國別') {
+      val = p['國別'] || p['公開國'] || p['權利國別'];
+    }
+  }
+
   if (!val || (Array.isArray(val) && val.length === 0)) return ['其他'];
+
   if (typeof val === 'string') {
     if (val.includes(',') || val.includes('、')) {
       return [...new Set(val.split(/[,、]/).map(s => s.trim()).filter(Boolean))];
@@ -48,7 +100,7 @@ const normalizeDimensionValue = (val) => {
   return [String(val).trim()];
 };
 
-// Compute the Cartesian product of an array of arrays
+// Compute Cartesian product of an array of arrays
 const cartesianProduct = (arrays) => {
   if (arrays.length === 0) return [[]];
   return arrays.reduce((acc, curr) => {
@@ -58,45 +110,138 @@ const cartesianProduct = (arrays) => {
   }, [[]]);
 };
 
-// Main matrix builder
-function buildHeatmapMatrix(patents, xDims, yDim) {
-  if (!patents || patents.length === 0 || !xDims || xDims.length === 0 || !yDim) {
+// Helper to check if a string represents "其他"
+const isOtherLabel = (str) => {
+  if (!str) return false;
+  const s = String(str).trim();
+  return s === '其他' || s.startsWith('其他') || s.endsWith('其他');
+};
+
+// Main matrix builder with Parent-Child Grouping, Top-N filtering, and "其他" positioning
+function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all') {
+  if (!patents || patents.length === 0 || !xDims || xDims.length === 0 || !yDims || yDims.length === 0) {
     return { x: [], y: [], z: [] };
   }
 
-  const xLabelsSet = new Set();
-  patents.forEach(p => {
-    const dimValues = xDims.map(d => normalizeDimensionValue(p[d]));
-    cartesianProduct(dimValues).forEach(combo => xLabelsSet.add(combo.join(' > ')));
-  });
-  const xArr = [...xLabelsSet].sort();
+  // Extract cartesian product of dimension values for a patent
+  const getPatentCombos = (p, dims) => {
+    const dimValues = dims.map(d => normalizeDimensionValue(p, d));
+    return cartesianProduct(dimValues);
+  };
 
-  const yLabelsSet = new Set();
-  patents.forEach(p => normalizeDimensionValue(p[yDim]).forEach(v => yLabelsSet.add(v)));
-  const yArr = [...yLabelsSet].sort();
+  // Helper to generate sorted axis labels with Parent-Child Grouping & Top-N & "其他" positioning
+  const generateSortedAxisLabels = (dims, topNLimit, axisType) => {
+    const parentCounts = new Map();
+    const comboCounts = new Map();
+    const parentChildrenMap = new Map();
+
+    patents.forEach(p => {
+      const pid = p['專利公開公告號'] || String(Math.random());
+      const combos = getPatentCombos(p, dims);
+      combos.forEach(combo => {
+        const parent = combo[0];
+        const child = combo[1] || null;
+        const comboStr = combo.join(' > ');
+
+        if (!parentCounts.has(parent)) parentCounts.set(parent, new Set());
+        parentCounts.get(parent).add(pid);
+
+        if (!comboCounts.has(comboStr)) comboCounts.set(comboStr, new Set());
+        comboCounts.get(comboStr).add(pid);
+
+        if (!parentChildrenMap.has(parent)) parentChildrenMap.set(parent, new Set());
+        if (child) parentChildrenMap.get(parent).add(child);
+      });
+    });
+
+    // Top-N Filtering by patent count
+    let parentEntries = Array.from(parentCounts.entries()).map(([parent, set]) => ({
+      parent,
+      count: set.size
+    }));
+
+    if (topNLimit !== 'all' && typeof topNLimit === 'number' && topNLimit > 0) {
+      const sortedByCount = [...parentEntries].sort((a, b) => b.count - a.count);
+      parentEntries = sortedByCount.slice(0, topNLimit);
+    }
+
+    // Sort Parents: Regular parents natural sort, "其他" parent pushed to end
+    const regularParents = parentEntries.filter(p => !isOtherLabel(p.parent)).map(p => p.parent);
+    const otherParents = parentEntries.filter(p => isOtherLabel(p.parent)).map(p => p.parent);
+
+    regularParents.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    const sortedParents = [...regularParents, ...otherParents];
+
+    const finalLabels = [];
+
+    sortedParents.forEach(parent => {
+      if (dims.length === 1) {
+        finalLabels.push(parent);
+      } else {
+        // 2 levels: sort children under this parent
+        const childrenSet = parentChildrenMap.get(parent) || new Set();
+        const childrenArr = Array.from(childrenSet);
+
+        const regularChildren = childrenArr.filter(c => !isOtherLabel(c));
+        const otherChildren = childrenArr.filter(c => isOtherLabel(c));
+
+        regularChildren.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        const sortedChildren = [...regularChildren, ...otherChildren];
+
+        if (sortedChildren.length === 0) {
+          finalLabels.push(parent);
+        } else {
+          sortedChildren.forEach(child => {
+            finalLabels.push(`${parent} > ${child}`);
+          });
+        }
+      }
+    });
+
+    // Requirement 1 positioning adjustment:
+    // X-axis: "其他" items pushed to VERY END (rightmost)
+    // Y-axis: "其他" items placed at INDEX 0 (bottom-most in Plotly y[0])
+    if (axisType === 'x') {
+      const regLabels = finalLabels.filter(l => !isOtherLabel(l));
+      const othLabels = finalLabels.filter(l => isOtherLabel(l));
+      return [...regLabels, ...othLabels];
+    } else {
+      const regLabels = finalLabels.filter(l => !isOtherLabel(l));
+      const othLabels = finalLabels.filter(l => isOtherLabel(l));
+      return [...othLabels, ...regLabels];
+    }
+  };
+
+  const xArr = generateSortedAxisLabels(xDims, xTopN, 'x');
+  const yArr = generateSortedAxisLabels(yDims, yTopN, 'y');
 
   const matrix = yArr.map(() => xArr.map(() => new Set()));
 
   patents.forEach(p => {
     const pid = p['專利公開公告號'] || String(Math.random());
-    const dimValues = xDims.map(d => normalizeDimensionValue(p[d]));
-    const xs = cartesianProduct(dimValues).map(combo => combo.join(' > '));
-    const ys = normalizeDimensionValue(p[yDim]);
-    xs.forEach(x => {
-      ys.forEach(y => {
+    const xCombos = getPatentCombos(p, xDims).map(c => c.join(' > '));
+    const yCombos = getPatentCombos(p, yDims).map(c => c.join(' > '));
+
+    xCombos.forEach(x => {
+      yCombos.forEach(y => {
         const xi = xArr.indexOf(x);
         const yi = yArr.indexOf(y);
-        if (xi >= 0 && yi >= 0) matrix[yi][xi].add(pid);
+        if (xi >= 0 && yi >= 0) {
+          matrix[yi][xi].add(pid);
+        }
       });
     });
   });
 
-  return { x: xArr, y: yArr, z: matrix.map(row => row.map(s => s.size)) };
+  return {
+    x: xArr,
+    y: yArr,
+    z: matrix.map(row => row.map(s => s.size))
+  };
 }
 
 // ─── Drag-and-drop sub-components ────────────────────────────────────────────
 
-// A sortable chip inside X-axis list (can be reordered within the list)
 const SortableXChip = ({ dim, theme }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dim.id });
   const isDark = theme === 'dark';
@@ -119,8 +264,7 @@ const SortableXChip = ({ dim, theme }) => {
         fontSize: '0.85rem',
         color: isDark ? '#7dd3fc' : '#0284c7',
         fontWeight: '600',
-        backdropFilter: 'blur(4px)',
-        transition: 'box-shadow 0.2s'
+        backdropFilter: 'blur(4px)'
       }}
       {...attributes}
       {...listeners}
@@ -132,7 +276,6 @@ const SortableXChip = ({ dim, theme }) => {
   );
 };
 
-// A simple draggable chip (for available pool and Y-axis slot)
 const DraggableChip = ({ dim, zone, color = 'cyan', theme }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${zone}:${dim.id}`,
@@ -189,7 +332,6 @@ const DraggableChip = ({ dim, zone, color = 'cyan', theme }) => {
   );
 };
 
-// Droppable zone wrapper
 const DroppableZone = ({ id, children, label, hint, isEmpty, accent = 'cyan', theme }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isDark = theme === 'dark';
@@ -228,17 +370,14 @@ const DroppableZone = ({ id, children, label, hint, isEmpty, accent = 'cyan', th
   );
 };
 
-// ─── Sparse matrix filter utility ──────────────────────────────────────────────
 function filterSparseMatrix({ x, y, z }) {
   if (!z || z.length === 0) return { x, y, z, removedCols: 0, removedRows: 0 };
 
-  // Find non-zero column indices
   const activeColIdx = x.reduce((acc, _, ci) => {
     if (z.some(row => row[ci] > 0)) acc.push(ci);
     return acc;
   }, []);
 
-  // Find non-zero row indices
   const activeRowIdx = z.reduce((acc, row, ri) => {
     if (row.some(v => v > 0)) acc.push(ri);
     return acc;
@@ -257,7 +396,6 @@ function filterSparseMatrix({ x, y, z }) {
   };
 }
 
-// Custom modifier to center the drag overlay ghost directly under the cursor
 const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform }) => {
   if (activeNodeRect && activatorEvent) {
     const clientX = activatorEvent.clientX !== undefined
@@ -284,8 +422,11 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const [chartType, setChartType] = useState('heatmap'); // 'heatmap' | 'bubble'
   const heatmapContainerRef = useRef(null);
 
+  // Settings Modal visibility (Requirement 4)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // Extract patents from treeData
-  const patents = useMemo(() => {
+  const rawPatents = useMemo(() => {
     if (!treeData) return [];
     let arr = treeData.patents;
     if (!arr || !Array.isArray(arr)) {
@@ -296,24 +437,62 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     return Array.isArray(arr) ? arr : [];
   }, [treeData]);
 
-  // Dimension zone state
+  // Dynamically extract all available fields (Taxonomy + Excel)
+  const allAvailableDimensions = useMemo(() => {
+    return getAvailableDimensions(rawPatents);
+  }, [rawPatents]);
+
+  // Master Chart Configuration state
+  const [chartConfig, setChartConfig] = useState({
+    filterField: '',
+    filterValue: '',
+    xAxisLevels: 2,
+    xAxisFields: ['技術1階', '技術2階'],
+    xAxisTopN: 'all',
+    yAxisLevels: 1,
+    yAxisFields: ['功效節點'],
+    yAxisTopN: 'all'
+  });
+
+  // Requirement 4a: Single-Item Data Filter
+  const patents = useMemo(() => {
+    if (!chartConfig.filterField || !chartConfig.filterValue || chartConfig.filterValue === '__ALL__') {
+      return rawPatents;
+    }
+    const f = chartConfig.filterField;
+    const v = chartConfig.filterValue;
+    return rawPatents.filter(p => {
+      const vals = normalizeDimensionValue(p, f);
+      return vals.includes(v);
+    });
+  }, [rawPatents, chartConfig.filterField, chartConfig.filterValue]);
+
+  // Dimension zone state (synchronized with chartConfig)
   const [zones, setZones] = useState({
     available: ['應用領域', '技術3階'],
     xAxis: ['技術1階', '技術2階'],
     yAxis: ['功效節點']
   });
 
-  // Derive readable state
-  const xAxisDims = zones.xAxis;
-  const yAxisDim = zones.yAxis[0] || null;
+  const xAxisDims = chartConfig.xAxisFields;
+  const yAxisDims = chartConfig.yAxisFields;
 
-  // Sparse matrix filter toggle (default: filter out all-zero rows/cols)
+  // Handle modal settings apply (Requirement 4f)
+  const handleApplySettings = (newConfig) => {
+    setChartConfig(newConfig);
+
+    const used = new Set([...newConfig.xAxisFields, ...newConfig.yAxisFields]);
+    const available = allAvailableDimensions.map(d => d.id).filter(id => !used.has(id));
+
+    setZones({
+      available,
+      xAxis: newConfig.xAxisFields,
+      yAxis: newConfig.yAxisFields
+    });
+  };
+
   const [showEmpty, setShowEmpty] = useState(false);
-
-  // Active drag tracking
   const [activeDrag, setActiveDrag] = useState(null);
-
-  // State for double-clicked cell patents viewer
   const [selectedCellPatents, setSelectedCellPatents] = useState(null);
   const lastClickRef = useRef({ time: 0, x: null, y: null });
 
@@ -323,20 +502,16 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     const now = Date.now();
     const lastClick = lastClickRef.current;
 
-    // Detect double click (less than 300ms) on the same cell
     if (now - lastClick.time < 300 && lastClick.x === point.x && lastClick.y === point.y) {
       const targetX = point.x;
       const targetY = point.y;
 
-      // Find matching patents
       const matchedPatents = patents.filter(p => {
-        const dimValues = xAxisDims.map(d => normalizeDimensionValue(p[d]));
-        const xs = cartesianProduct(dimValues).map(combo => combo.join(' > '));
-        const ys = normalizeDimensionValue(p[yAxisDim]);
-        return xs.includes(targetX) && ys.includes(targetY);
+        const xCombos = cartesianProduct(xAxisDims.map(d => normalizeDimensionValue(p, d))).map(c => c.join(' > '));
+        const yCombos = cartesianProduct(yAxisDims.map(d => normalizeDimensionValue(p, d))).map(c => c.join(' > '));
+        return xCombos.includes(targetX) && yCombos.includes(targetY);
       });
 
-      // Deduplicate by patent publication number
       const uniquePatents = Array.from(
         new Map(matchedPatents.map(p => [p["專利公開公告號"], p])).values()
       );
@@ -350,12 +525,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
       }
     }
 
-    lastClickRef.current = {
-      time: now,
-      x: point.x,
-      y: point.y
-    };
-  }, [patents, xAxisDims, yAxisDim]);
+    lastClickRef.current = { time: now, x: point.x, y: point.y };
+  }, [patents, xAxisDims, yAxisDims]);
 
   const captureImage = useCallback(async () => {
     const container = heatmapContainerRef.current;
@@ -366,11 +537,9 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
       let image;
       if (plotDiv) {
-        // Use reliable dimensions — offsetWidth/offsetHeight are layout pixels
         const w = plotDiv.offsetWidth || container.offsetWidth || 1200;
         const h = plotDiv.offsetHeight || container.offsetHeight || 800;
 
-        // Plotly.toImage returns a "data:image/png;base64,..." data URL
         const dataUrl = await Plotly.toImage(plotDiv, {
           format: 'png',
           scale: 2,
@@ -378,7 +547,6 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           height: h,
         });
 
-        // Composite onto a solid background canvas to remove transparency
         image = await new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
@@ -395,7 +563,6 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           img.src = dataUrl;
         });
       } else {
-        // Fallback: blank canvas with background color only
         const rect = container.getBoundingClientRect();
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(rect.width * 2);
@@ -415,7 +582,6 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
       a.click();
       document.body.removeChild(a);
 
-      // Log PNG download usage event (including estimated file size)
       if (authState?.session_id) {
         const base64Data = image.split(',')[1] || '';
         const padding = (base64Data.endsWith('==') ? 2 : base64Data.endsWith('=') ? 1 : 0);
@@ -431,7 +597,6 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     }
   }, [theme, authState]);
 
-  // Expose captureImage to parent via callback
   useEffect(() => {
     if (onCaptureReady) {
       onCaptureReady(() => captureImage);
@@ -440,11 +605,11 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // Compute raw matrix
+  // Compute raw matrix with Parent-Child Grouping, Top-N & "其他" rules
   const rawMatrix = useMemo(() => {
-    if (!yAxisDim || xAxisDims.length === 0) return { x: [], y: [], z: [] };
-    return buildHeatmapMatrix(patents, xAxisDims, yAxisDim);
-  }, [patents, xAxisDims, yAxisDim]);
+    if (xAxisDims.length === 0 || yAxisDims.length === 0) return { x: [], y: [], z: [] };
+    return buildHeatmapMatrix(patents, xAxisDims, yAxisDims, chartConfig.xAxisTopN, chartConfig.yAxisTopN);
+  }, [patents, xAxisDims, yAxisDims, chartConfig.xAxisTopN, chartConfig.yAxisTopN]);
 
   // Apply sparse filtering
   const { matrixData, removedCols, removedRows } = useMemo(() => {
@@ -485,7 +650,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     return list;
   }, [matrixData]);
 
-  // Flattened data calculation for Bubble Plot
+  // Flattened data calculation for Bubble Plot (Requirement 3: 100% synchronized with Heatmap)
   const bubbleData = useMemo(() => {
     if (!matrixData?.z?.length) return { xs: [], ys: [], sizes: [], colors: [], texts: [], maxVal: 1 };
     const xs = [];
@@ -520,9 +685,9 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
       zone = 'xAxis';
       dimId = active.id;
     }
-    const dim = ALL_DIMENSIONS.find(d => d.id === dimId);
+    const dim = allAvailableDimensions.find(d => d.id === dimId);
     setActiveDrag({ zone, dim });
-  }, []);
+  }, [allAvailableDimensions]);
 
   const handleDragEnd = useCallback((event) => {
     const { active, over } = event;
@@ -543,14 +708,14 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     }
 
     if (srcZone === destZone) {
-      // Reorder within X-axis list
       if (srcZone === 'xAxis') {
         setZones(prev => {
           const oldIdx = prev.xAxis.indexOf(dimId);
-          // over.id may be 'xAxis' (zone) or a specific dimId when sorting
           const newIdx = prev.xAxis.indexOf(over.id);
           if (oldIdx !== -1 && newIdx !== -1) {
-            return { ...prev, xAxis: arrayMove(prev.xAxis, oldIdx, newIdx) };
+            const nextX = arrayMove(prev.xAxis, oldIdx, newIdx);
+            setChartConfig(cfg => ({ ...cfg, xAxisFields: nextX }));
+            return { ...prev, xAxis: nextX };
           }
           return prev;
         });
@@ -565,12 +730,9 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         yAxis: [...prev.yAxis]
       };
 
-      // Remove from source zone
       next[srcZone] = next[srcZone].filter(id => id !== dimId);
 
-      // Add to destination
       if (destZone === 'yAxis') {
-        // Y-axis only holds one item: swap it out to available
         if (next.yAxis.length > 0) {
           const displaced = next.yAxis[0];
           next.available = [...next.available.filter(id => id !== dimId), displaced];
@@ -586,31 +748,45 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         }
       }
 
+      setChartConfig(cfg => ({
+        ...cfg,
+        xAxisFields: next.xAxis,
+        xAxisLevels: next.xAxis.length,
+        yAxisFields: next.yAxis,
+        yAxisLevels: next.yAxis.length
+      }));
+
       return next;
     });
   }, []);
 
-  // Remove a dimension from X-axis back to available
   const removeFromX = useCallback((dimId) => {
-    setZones(prev => ({
-      ...prev,
-      xAxis: prev.xAxis.filter(id => id !== dimId),
-      available: [...prev.available, dimId]
-    }));
+    setZones(prev => {
+      const nextX = prev.xAxis.filter(id => id !== dimId);
+      setChartConfig(cfg => ({ ...cfg, xAxisFields: nextX, xAxisLevels: nextX.length }));
+      return {
+        ...prev,
+        xAxis: nextX,
+        available: [...prev.available, dimId]
+      };
+    });
   }, []);
 
-  // Remove Y-axis dimension back to available
-  const removeFromY = useCallback(() => {
-    setZones(prev => ({
-      ...prev,
-      yAxis: [],
-      available: [...prev.available, ...prev.yAxis]
-    }));
+  const removeFromY = useCallback((dimId) => {
+    setZones(prev => {
+      const nextY = prev.yAxis.filter(id => id !== dimId);
+      setChartConfig(cfg => ({ ...cfg, yAxisFields: nextY, yAxisLevels: nextY.length }));
+      return {
+        ...prev,
+        yAxis: nextY,
+        available: [...prev.available, dimId]
+      };
+    });
   }, []);
 
-  const getDim = (id) => ALL_DIMENSIONS.find(d => d.id === id);
+  const getDim = (id) => allAvailableDimensions.find(d => d.id === id);
 
-  const hasData = xAxisDims.length > 0 && !!yAxisDim && matrixData.z.length > 0;
+  const hasData = xAxisDims.length > 0 && yAxisDims.length > 0 && matrixData.z.length > 0;
 
   return (
     <DndContext
@@ -635,7 +811,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         <div style={{
           width: '230px',
           flexShrink: 0,
-          padding: '1.25rem 1rem 80px 1rem', // Bottom padding of 80px to avoid Start New button overlap
+          padding: '1.25rem 1rem 80px 1rem',
           borderRight: theme === 'dark' ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
           background: theme === 'dark' ? 'rgba(70, 198, 245, 0.6)' : 'rgba(70, 198, 245, 0.6)',
           display: 'flex',
@@ -648,7 +824,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
               📊 軸維度配置
             </h3>
             <p style={{ margin: 0, fontSize: '0.72rem', color: theme === 'dark' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.6)', lineHeight: 1.5 }}>
-              拖曳維度標籤到 X 軸或 Y 軸
+              拖曳維度標籤或使用上方 ⚙️ 齒輪進行進階繪圖設定
             </p>
           </div>
 
@@ -675,7 +851,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           {/* X Axis drop zone */}
           <DroppableZone
             id="xAxis"
-            label="X 軸維度（可多層，串接顯示）"
+            label="X 軸維度（最多2階）"
             hint="拖曳維度到此處"
             isEmpty={zones.xAxis.length === 0}
             accent="cyan"
@@ -718,7 +894,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           {/* Y Axis drop zone */}
           <DroppableZone
             id="yAxis"
-            label="Y 軸維度（單一維度）"
+            label="Y 軸維度（最多2階）"
             hint="拖曳一個維度到此處"
             isEmpty={zones.yAxis.length === 0}
             accent="purple"
@@ -733,7 +909,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                     <DraggableChip dim={dim} zone="yAxis" color="purple" theme={theme} />
                   </div>
                   <button
-                    onClick={removeFromY}
+                    onClick={() => removeFromY(id)}
                     title="移回可用維度"
                     style={{
                       background: 'transparent',
@@ -819,7 +995,12 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.7)',
             lineHeight: 1.6
           }}>
-            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>專利分類總數：</strong>{patents.length}</div>
+            {chartConfig.filterField && chartConfig.filterValue && (
+              <div style={{ color: '#38bdf8', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                🔍 篩選: {chartConfig.filterField} = {chartConfig.filterValue}
+              </div>
+            )}
+            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>分析專利件數：</strong>{patents.length} / {rawPatents.length}</div>
             <div>📐 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>全矩陣：</strong>{rawMatrix.x.length} × {rawMatrix.y.length}</div>
             {!showEmpty && (removedCols > 0 || removedRows > 0) && (
               <div style={{ color: 'rgba(251,191,36,0.7)', fontSize: '0.68rem' }}>
@@ -853,8 +1034,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
               </h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)' }}>
                 {hasData
-                  ? `Y: ${yAxisDim}  &  X: ${xAxisDims.join(' > ')}`
-                  : '請在左側配置 X 軸與 Y 軸維度'}
+                  ? `Y: ${yAxisDims.join(' > ')}${chartConfig.yAxisTopN !== 'all' ? ` (前${chartConfig.yAxisTopN}大)` : ''}  &  X: ${xAxisDims.join(' > ')}${chartConfig.xAxisTopN !== 'all' ? ` (前${chartConfig.xAxisTopN}大)` : ''}`
+                  : '請在左側配置 X 軸與 Y 軸維度，或使用⚙️進行繪圖進階設定'}
               </p>
             </div>
 
@@ -900,6 +1081,29 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   🫧 氣泡圖
                 </button>
               </div>
+
+              {/* Requirement 4: Gear Settings Button */}
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                title="繪圖進階設定"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '0.5rem',
+                  background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                  border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)'}`,
+                  color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                  fontWeight: '600',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Settings size={14} />
+                <span>繪圖設定</span>
+              </button>
 
               {hasData && !showEmpty && (removedCols > 0 || removedRows > 0) && (
                 <div style={{
@@ -982,7 +1186,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
               <div style={{ textAlign: 'center', color: theme === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.45)' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>📊</div>
                 <div style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.4rem', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>尚未選擇維度</div>
-                <div style={{ fontSize: '0.85rem' }}>請將至少一個維度拖曳到 X 軸，<br />並選擇一個維度作為 Y 軸。</div>
+                <div style={{ fontSize: '0.85rem' }}>請在左側拖曳維度，或點擊右上角 ⚙️【繪圖設定】進行設定。</div>
               </div>
             ) : (() => {
               const maxBubblePx = 42;
@@ -1001,8 +1205,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   len: 0.8
                 },
                 hovertemplate:
-                  '<b>X 軸 (技術)</b>: %{x}<br>' +
-                  '<b>Y 軸 (功效)</b>: %{y}<br>' +
+                  '<b>X 軸 (%{x})</b><br>' +
+                  '<b>Y 軸 (%{y})</b><br>' +
                   '<b>專利件數</b>: %{z} 件<extra></extra>'
               }] : [{
                 x: bubbleData.xs,
@@ -1035,14 +1239,14 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   color: '#ffffff'
                 },
                 hovertemplate:
-                  '<b>X 軸 (技術)</b>: %{x}<br>' +
-                  '<b>Y 軸 (功效)</b>: %{y}<br>' +
+                  '<b>X 軸 (%{x})</b><br>' +
+                  '<b>Y 軸 (%{y})</b><br>' +
                   '<b>專利件數</b>: %{marker.size} 件<extra></extra>'
               }];
 
               const plotLayout = {
                 title: {
-                  text: `${yAxisDim} vs ${xAxisDims.join(' > ')}${chartType === 'bubble' ? ' (氣泡大小表專利件數)' : ''}`,
+                  text: `${yAxisDims.join(' > ')} vs ${xAxisDims.join(' > ')}${chartType === 'bubble' ? ' (氣泡大小表專利件數)' : ''}`,
                   font: { family: 'Outfit, Inter, system-ui, sans-serif', size: 16, color: theme === 'dark' ? '#cbd5e1' : '#1e293b' }
                 },
                 autosize: true,
@@ -1107,7 +1311,6 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             overflow: 'hidden',
             transition: 'all 0.3s ease'
           }}>
-
             {/* Sticky Header Section */}
             <div style={{
               background: theme === 'dark' ? 'rgba(15, 23, 42, 0.98)' : 'rgba(255, 255, 255, 0.98)',
@@ -1238,6 +1441,17 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         )}
       </div>
 
+      {/* Requirement 4 Modal Dialog */}
+      <HeatmapSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onApply={handleApplySettings}
+        currentConfig={chartConfig}
+        allAvailableFields={allAvailableDimensions}
+        patents={rawPatents}
+        theme={theme}
+      />
+
       {/* Drag overlay ghost chip */}
       {createPortal(
         <DragOverlay modifiers={[snapCenterToCursor]}>
@@ -1264,7 +1478,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         </DragOverlay>,
         document.body
       )}
-    </DndContext >
+    </DndContext>
   );
 };
 
