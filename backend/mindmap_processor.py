@@ -647,7 +647,8 @@ async def run_preprocess_task(
     file_path: str,
     filename: str,
     enable_screening: bool,
-    screening_criteria: str
+    screening_criteria: str,
+    selected_columns: list = None
 ):
     try:
         import dotenv
@@ -957,6 +958,7 @@ AI技術簡述: {brief}
             "df_preprocessed": df,
             "file_path_preprocessed": out_path,
             "filename": filename,
+            "selected_columns": selected_columns or [],
             "x_session_id": old_session_id
         }
 
@@ -1043,6 +1045,9 @@ def detect_and_parse_bypass_excel(file_path, filename, file_id):
             return [val_str]
 
         patents = []
+        all_excel_cols = [c for c in df.columns if str(c).strip()]
+        extra_excel_cols = [c for c in all_excel_cols if c not in col_mapping.values()]
+
         for idx, row in df.iterrows():
             p_no = str(row.get(col_mapping["專利公開公告號"], "")).strip()
             if not p_no:
@@ -1054,7 +1059,7 @@ def detect_and_parse_bypass_excel(file_path, filename, file_id):
             app = parse_list(row.get(col_mapping["應用領域"]))
             eff = parse_list(row.get(col_mapping["功效節點"]))
             
-            patents.append({
+            p_entry = {
                 "專利公開公告號": p_no,
                 "技術1階": t1,
                 "技術2階": t2,
@@ -1064,7 +1069,12 @@ def detect_and_parse_bypass_excel(file_path, filename, file_id):
                 "AI技術簡述": str(row.get(col_mapping["AI技術簡述"], "")).strip(),
                 "技術特徵手段": str(row.get(col_mapping["技術特徵手段"], "")).strip(),
                 "解決的技術問題或技術效益": str(row.get(col_mapping["解決的技術問題或技術效益"], "")).strip()
-            })
+            }
+            for ex_col in extra_excel_cols:
+                val = row.get(ex_col, "")
+                if pd.notna(val) and str(val).strip() != "":
+                    p_entry[ex_col] = str(val).strip()
+            patents.append(p_entry)
 
         definitions = {}
         if "分類標籤定義" in xls.sheet_names:
@@ -1185,7 +1195,7 @@ def classify_excel_columns(df):
     selectable_cols = [c for c in all_cols if c not in ai_cols and c not in required_cols]
     
     # 推薦欄位 (智慧預先打勾的分析欄位)
-    rec_keywords = ["年", "日", "人", "權", "類", "對象", "國", "date", "year", "applicant", "assignee", "ipc", "cpc"]
+    rec_keywords = ["年", "日", "人", "權", "類", "對象", "國", "date", "year", "applicant", "assignee", "ipc", "cpc", "country"]
     recommended_cols = [c for c in selectable_cols if any(k in c.lower() for k in rec_keywords)]
     
     return {
@@ -1338,8 +1348,11 @@ async def preprocess_patent_file(
             "result": None
         }
 
-        # Store session_id for background task to log patent count
-        temp_storage[file_id] = {"x_session_id": session_id}
+        # Store session_id and selected_columns for background task
+        if file_id not in temp_storage:
+            temp_storage[file_id] = {}
+        temp_storage[file_id]["x_session_id"] = session_id
+        temp_storage[file_id]["selected_columns"] = parsed_selected_cols
 
         background_tasks.add_task(
             run_preprocess_task,
@@ -1348,7 +1361,8 @@ async def preprocess_patent_file(
             file_path,
             file.filename,
             enable_screening,
-            screening_criteria
+            screening_criteria,
+            parsed_selected_cols
         )
 
         return {"task_id": task_id, "file_id": file_id, "status": "processing"}
@@ -1770,15 +1784,34 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
         col_means = next((c for c in df.columns if "技術特徵手段" in str(c)), "")
         col_effect = next((c for c in df.columns if "解決的技術問題或技術效益" in str(c)), "")
 
+        # 提取使用者勾選的自訂/擴充欄位資料
+        selected_cols = temp_storage.get(file_id, {}).get("selected_columns", [])
+        internal_cols = {
+            "專利公開公告號", "公開公告號", "專利號", "publication number",
+            "AI技術簡述", "技術特徵手段", "解決的技術問題或技術效益", "初篩結果",
+            "技術1階", "技術2階", "技術3階", "應用領域", "功效節點", "技術路徑"
+        }
+        if selected_cols:
+            target_extra_cols = [c for c in selected_cols if c in df.columns and c not in internal_cols]
+        else:
+            target_extra_cols = [c for c in df.columns if str(c).strip() and c not in internal_cols]
+
         patent_lookup = {}
         for _, row in df.iterrows():
             p_no = str(row.get(pub_col_name, "")).strip()
+            extra_data = {}
+            for col in target_extra_cols:
+                val = row.get(col, "")
+                if pd.notna(val) and str(val).strip() != "":
+                    extra_data[col] = str(val).strip()
+
             patent_lookup[p_no] = {
                 "AI技術簡述": str(row.get(col_brief, "")).strip(),
                 "技術特徵手段": str(row.get(col_means, "")).strip(),
                 "解決的技術問題或技術效益": str(row.get(col_effect, "")).strip(),
                 "原領域": str(row.get(col_app, "")).strip(),
-                "原功效": str(row.get(col_eff, "")).strip()
+                "原功效": str(row.get(col_eff, "")).strip(),
+                "extra_fields": extra_data
             }
 
         # Checkpoint 路徑使用 file_id 命名（而非 task_id），確保跨任務重啟後仍可找到
@@ -2069,7 +2102,7 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                             details = patent_lookup.get(p_id, {})
                             
                             for t3 in valid_t3s:
-                                mapped_batch.append({
+                                p_entry = {
                                     "專利公開公告號": p_id,
                                     "技術1階": [t1],
                                     "技術2階": [t2],
@@ -2079,7 +2112,10 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                                     "AI技術簡述": details.get("AI技術簡述", ""),
                                     "技術特徵手段": details.get("技術特徵手段", ""),
                                     "解決的技術問題或技術效益": details.get("解決的技術問題或技術效益", "")
-                                })
+                                }
+                                if "extra_fields" in details:
+                                    p_entry.update(details["extra_fields"])
+                                mapped_batch.append(p_entry)
                         return mapped_batch
                     except Exception as e:
                         logger.error(f"Task {task_id}: Stage 2 batch mapping failed for batch {batch_pnos[0]}~: {e}")
@@ -2087,7 +2123,7 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                         for p_id in batch_pnos:
                             s1_p = next((x for x in stage1_mapped if x["專利公開公告號"] == p_id), {})
                             details = patent_lookup.get(p_id, {})
-                            fallback_batch.append({
+                            p_entry = {
                                 "專利公開公告號": p_id,
                                 "技術1階": [t1],
                                 "技術2階": [t2],
@@ -2097,7 +2133,10 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                                 "AI技術簡述": details.get("AI技術簡述", ""),
                                 "技術特徵手段": details.get("技術特徵手段", ""),
                                 "解決的技術問題或技術效益": details.get("解決的技術問題或技術效益", "")
-                            })
+                            }
+                            if "extra_fields" in details:
+                                p_entry.update(details["extra_fields"])
+                            fallback_batch.append(p_entry)
                         return fallback_batch
 
             for batch_pnos in batches_s2:
@@ -2132,7 +2171,7 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                 for path in paths:
                     t1, t2 = path[0], path[1]
                     details = patent_lookup.get(p_no, {})
-                    stage2_mapped.append({
+                    p_entry = {
                         "專利公開公告號": p_no,
                         "技術1階": [t1],
                         "技術2階": [t2],
@@ -2142,7 +2181,10 @@ async def run_full_mindmap_task(task_id: str, df, taxonomy: dict, file_id: str, 
                         "AI技術簡述": details.get("AI技術簡述", ""),
                         "技術特徵手段": details.get("技術特徵手段", ""),
                         "解決的技術問題或技術效益": details.get("解決的技術問題或技術效益", "")
-                    })
+                    }
+                    if "extra_fields" in details:
+                        p_entry.update(details["extra_fields"])
+                    stage2_mapped.append(p_entry)
 
         final_result = {
             "summary_title": taxonomy.get("summary_title", "專利分類心智圖"),

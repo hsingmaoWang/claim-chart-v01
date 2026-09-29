@@ -39,9 +39,12 @@ const getAvailableDimensions = (patents) => {
   if (!patents || patents.length === 0) return result;
 
   const baseIds = new Set(BASE_DIMENSIONS.map(d => d.id));
+  // Only ignore internal/metadata keys that are NOT useful as chart dimensions
   const ignoredKeys = new Set([
-    '專利公開公告號', 'AI技術簡述', '技術特徵手段', '解決的技術問題或技術效益',
-    'summary_title', 'mind_map_title', 'id', '_id'
+    '專利公開公告號', '公開號', '申請號',
+    'AI技術簡述', '技術特徵手段', '解決的技術問題或技術效益',
+    'summary_title', 'mind_map_title', 'id', '_id',
+    '__rowNum__'
   ]);
 
   const excelKeys = new Set();
@@ -165,12 +168,17 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
       parentEntries = sortedByCount.slice(0, topNLimit);
     }
 
-    // Sort Parents: Regular parents natural sort, "其他" parent pushed to end
+    // Sort Parents: Regular parents natural sort
     const regularParents = parentEntries.filter(p => !isOtherLabel(p.parent)).map(p => p.parent);
     const otherParents = parentEntries.filter(p => isOtherLabel(p.parent)).map(p => p.parent);
 
     regularParents.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-    const sortedParents = [...regularParents, ...otherParents];
+
+    // X-axis: "其他" parent pushed to END (rightmost)
+    // Y-axis: "情绪/其他" parent placed at INDEX 0 (bottom-most in Plotly y[0])
+    const sortedParents = axisType === 'x'
+      ? [...regularParents, ...otherParents]
+      : [...otherParents, ...regularParents];
 
     const finalLabels = [];
 
@@ -178,7 +186,7 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
       if (dims.length === 1) {
         finalLabels.push(parent);
       } else {
-        // 2 levels: sort children under this parent
+        // 2 levels: sort children under this parent while keeping them contiguous under parent
         const childrenSet = parentChildrenMap.get(parent) || new Set();
         const childrenArr = Array.from(childrenSet);
 
@@ -198,18 +206,7 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
       }
     });
 
-    // Requirement 1 positioning adjustment:
-    // X-axis: "其他" items pushed to VERY END (rightmost)
-    // Y-axis: "其他" items placed at INDEX 0 (bottom-most in Plotly y[0])
-    if (axisType === 'x') {
-      const regLabels = finalLabels.filter(l => !isOtherLabel(l));
-      const othLabels = finalLabels.filter(l => isOtherLabel(l));
-      return [...regLabels, ...othLabels];
-    } else {
-      const regLabels = finalLabels.filter(l => !isOtherLabel(l));
-      const othLabels = finalLabels.filter(l => isOtherLabel(l));
-      return [...othLabels, ...regLabels];
-    }
+    return finalLabels;
   };
 
   const xArr = generateSortedAxisLabels(xDims, xTopN, 'x');
@@ -474,6 +471,21 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     yAxis: ['功效節點']
   });
 
+  // Sync zones.available whenever allAvailableDimensions changes (e.g., Excel fields loaded)
+  useEffect(() => {
+    setZones(prev => {
+      const inUse = new Set([...prev.xAxis, ...prev.yAxis]);
+      // All known dimension IDs not currently in x or y axis
+      const newAvailable = allAvailableDimensions
+        .map(d => d.id)
+        .filter(id => !inUse.has(id));
+      return {
+        ...prev,
+        available: newAvailable
+      };
+    });
+  }, [allAvailableDimensions]);
+
   const xAxisDims = chartConfig.xAxisFields;
   const yAxisDims = chartConfig.yAxisFields;
 
@@ -622,7 +634,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
   // Coolwarm colorscale
   const coolwarmScale = [
-    [0.0, '#027afbff'],
+    [0.0, '#40b4fdff'],
     [0.25, '#50ede3ff'],
     [0.5, '#fbde05ff'],
     [0.75, '#f4a582'],
@@ -1255,6 +1267,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 margin: { l: 160, r: 40, t: 60, b: 180 },
                 xaxis: {
                   type: 'category',
+                  categoryorder: 'array',
+                  categoryarray: matrixData.x,
                   tickmode: 'array',
                   tickvals: matrixData.x,
                   ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>> ')),
@@ -1266,6 +1280,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 },
                 yaxis: {
                   type: 'category',
+                  categoryorder: 'array',
+                  categoryarray: matrixData.y,
                   tickmode: 'array',
                   tickvals: matrixData.y,
                   ticktext: matrixData.y,
