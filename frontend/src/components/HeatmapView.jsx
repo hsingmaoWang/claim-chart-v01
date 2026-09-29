@@ -19,7 +19,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, X as XIcon, Sun, Moon, Settings } from 'lucide-react';
+import { GripVertical, X as XIcon, Sun, Moon, Settings, ChevronRight, Sparkles } from 'lucide-react';
 import HeatmapSettingsModal from './HeatmapSettingsModal';
 
 const Plot = createPlotlyComponent(Plotly);
@@ -33,24 +33,38 @@ const BASE_DIMENSIONS = [
   { id: '應用領域', label: '應用領域', emoji: '🎯', isExcel: false },
 ];
 
-// Helper to extract all available fields (Base taxonomy + Excel expanded columns)
+const BASE_DIMENSION_IDS = new Set(BASE_DIMENSIONS.map(d => d.id));
+
+// Helper to check if a column is a required core column or system metadata
+const isCoreRequiredColumn = (key) => {
+  if (!key) return true;
+  const k = String(key).trim().toLowerCase();
+
+  const coreKeywords = [
+    '專利公開公告號', '公開號', '公開公告號', '專利號', '申請號', 'publication number', 'patent number', 'pub_no', 'patent_no',
+    '標題', 'title', '專利名稱', '名稱',
+    '摘要', 'abstract', '專利摘要',
+    'novelty', '新穎性', 'dwpi novelty',
+    'use', '用途', 'dwpi use',
+    'advantage', '優點', 'dwpi advantage',
+    'claim', '申請專利範圍', '權利要求', '主權項', 'first claim',
+    'ai技術簡述', '技術特徵手段', '解決的技術問題或技術效益', '初篩結果',
+    'summary_title', 'mind_map_title', 'id', '_id', '__rownum__'
+  ];
+
+  return coreKeywords.some(kw => k === kw || k.includes(kw));
+};
+
+// Helper to extract all available fields (Base taxonomy + User-selected Excel extra columns, excluding core columns)
 const getAvailableDimensions = (patents) => {
   const result = [...BASE_DIMENSIONS];
   if (!patents || patents.length === 0) return result;
 
-  const baseIds = new Set(BASE_DIMENSIONS.map(d => d.id));
-  // Only ignore internal/metadata keys that are NOT useful as chart dimensions
-  const ignoredKeys = new Set([
-    '專利公開公告號', '公開號', '申請號',
-    'AI技術簡述', '技術特徵手段', '解決的技術問題或技術效益',
-    'summary_title', 'mind_map_title', 'id', '_id',
-    '__rowNum__'
-  ]);
-
   const excelKeys = new Set();
   patents.forEach(p => {
-    Object.keys(p).forEach(key => {
-      if (!baseIds.has(key) && !ignoredKeys.has(key)) {
+    Object.keys(p).forEach(rawKey => {
+      const key = String(rawKey).trim();
+      if (!BASE_DIMENSION_IDS.has(key) && !isCoreRequiredColumn(key)) {
         excelKeys.add(key);
       }
     });
@@ -471,6 +485,25 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     yAxis: ['功效節點']
   });
 
+  // Extra columns drawer panel state (Requirement 2)
+  const [isExtraDrawerOpen, setIsExtraDrawerOpen] = useState(false);
+  const [extraSearchTerm, setExtraSearchTerm] = useState('');
+
+  // Separate default taxonomy available dimensions from extra user-selected Excel dimensions
+  const defaultAvailableIds = useMemo(() => {
+    return zones.available.filter(id => BASE_DIMENSION_IDS.has(id));
+  }, [zones.available]);
+
+  const extraAvailableIds = useMemo(() => {
+    return zones.available.filter(id => !BASE_DIMENSION_IDS.has(id));
+  }, [zones.available]);
+
+  const filteredExtraAvailableIds = useMemo(() => {
+    if (!extraSearchTerm.trim()) return extraAvailableIds;
+    const term = extraSearchTerm.trim().toLowerCase();
+    return extraAvailableIds.filter(id => id.toLowerCase().includes(term));
+  }, [extraAvailableIds, extraSearchTerm]);
+
   // Sync zones.available whenever allAvailableDimensions changes (e.g., Excel fields loaded)
   useEffect(() => {
     setZones(prev => {
@@ -844,19 +877,69 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           <DroppableZone
             id="available"
             label="可用維度"
-            hint="（此處無維度）"
-            isEmpty={zones.available.length === 0}
+            hint="（預設維度已全部使用）"
+            isEmpty={defaultAvailableIds.length === 0}
             accent="slate"
             theme={theme}
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-              {zones.available.map(id => {
+              {defaultAvailableIds.map(id => {
                 const dim = getDim(id);
                 if (!dim) return null;
                 return (
                   <DraggableChip key={id} dim={dim} zone="available" color="slate" theme={theme} />
                 );
               })}
+            </div>
+
+            {/* Clickable box for extra expanded columns flyout panel */}
+            <div
+              onClick={() => setIsExtraDrawerOpen(prev => !prev)}
+              title="點擊展開/收合擴充選擇欄位面板"
+              style={{
+                marginTop: '0.5rem',
+                padding: '0.5rem 0.65rem',
+                borderRadius: '0.6rem',
+                background: isExtraDrawerOpen
+                  ? (theme === 'dark' ? 'rgba(14, 165, 233, 0.25)' : 'rgba(14, 165, 233, 0.15)')
+                  : (theme === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)'),
+                border: `1px solid ${isExtraDrawerOpen
+                  ? (theme === 'dark' ? 'rgba(14, 165, 233, 0.5)' : 'rgba(14, 165, 233, 0.3)')
+                  : (theme === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)')}`,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'all 0.2s ease',
+                userSelect: 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.85rem' }}>📊</span>
+                <span style={{ fontSize: '0.76rem', fontWeight: '700', color: theme === 'dark' ? '#7dd3fc' : '#0284c7' }}>
+                  擴充可選欄位
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{
+                  fontSize: '0.68rem',
+                  fontWeight: '700',
+                  padding: '1px 5px',
+                  borderRadius: '999px',
+                  background: theme === 'dark' ? 'rgba(14, 165, 233, 0.3)' : 'rgba(14, 165, 233, 0.15)',
+                  color: theme === 'dark' ? '#38bdf8' : '#0284c7'
+                }}>
+                  {extraAvailableIds.length} 個可選
+                </span>
+                <ChevronRight
+                  size={14}
+                  style={{
+                    transform: isExtraDrawerOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease',
+                    color: theme === 'dark' ? '#94a3b8' : '#64748b'
+                  }}
+                />
+              </div>
             </div>
           </DroppableZone>
 
@@ -1025,6 +1108,112 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             </div>
           </div>
         </div>
+
+        {/* ── Extra Available Columns Drawer Panel (Requirement 2) ── */}
+        {isExtraDrawerOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '240px',
+              top: '1.25rem',
+              width: '280px',
+              maxHeight: 'calc(100% - 2.5rem)',
+              backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: `1px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.35)' : 'rgba(2, 132, 199, 0.25)'}`,
+              borderRadius: '12px',
+              boxShadow: theme === 'dark'
+                ? '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(56, 189, 248, 0.2)'
+                : '0 15px 35px rgba(0, 0, 0, 0.15)',
+              zIndex: 800,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              animation: 'drawerSlideIn 0.2s ease-out'
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '10px 14px',
+              borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: theme === 'dark' ? 'rgba(30, 41, 59, 0.85)' : 'rgba(241, 245, 249, 0.9)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={15} color={theme === 'dark' ? '#38bdf8' : '#0284c7'} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                  擴充可選分析欄位抽屜面板
+                </span>
+              </div>
+              <button
+                onClick={() => setIsExtraDrawerOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: theme === 'dark' ? '#94a3b8' : '#64748b',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+
+            {/* Search input */}
+            {extraAvailableIds.length > 5 && (
+              <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+                <input
+                  type="text"
+                  placeholder="搜尋擴充欄位..."
+                  value={extraSearchTerm}
+                  onChange={e => setExtraSearchTerm(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '5px 9px',
+                    fontSize: '0.78rem',
+                    borderRadius: '6px',
+                    border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'}`,
+                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                    color: theme === 'dark' ? '#f8fafc' : '#0f172a',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Scrollable list of draggable extra chips */}
+            <div style={{
+              padding: '12px',
+              maxHeight: '360px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.45rem',
+              alignContent: 'flex-start',
+              flex: 1
+            }}>
+              {filteredExtraAvailableIds.length === 0 ? (
+                <div style={{ fontSize: '0.75rem', color: theme === 'dark' ? '#64748b' : '#94a3b8', fontStyle: 'italic', padding: '16px 0', width: '100%', textAlign: 'center' }}>
+                  {extraSearchTerm ? '未找到相符的擴充欄位' : '無其他未選取的擴充欄位'}
+                </div>
+              ) : (
+                filteredExtraAvailableIds.map(id => {
+                  const dim = getDim(id);
+                  if (!dim) return null;
+                  return (
+                    <DraggableChip key={id} dim={dim} zone="available" color="slate" theme={theme} />
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Main Heatmap Area ── */}
         <div ref={heatmapContainerRef} className={`heatmap-theme-${theme}`} style={{

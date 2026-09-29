@@ -78,7 +78,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
         border: '1px solid rgba(255, 255, 255, 0.1)',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '680px',
+        maxWidth: '760px',
         maxHeight: '85vh',
         display: 'flex',
         flexDirection: 'column',

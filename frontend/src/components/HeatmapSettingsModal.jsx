@@ -14,6 +14,28 @@ const HeatmapSettingsModal = ({
 
   const isDark = theme === 'dark';
 
+  // Helper to strictly ensure core required columns are excluded from dropdowns
+  const isCoreRequiredColumn = (key) => {
+    if (!key) return true;
+    const k = String(key).trim().toLowerCase();
+    const coreKeywords = [
+      '專利公開公告號', '公開號', '公開公告號', '專利號', '申請號', 'publication number', 'patent number', 'pub_no', 'patent_no',
+      '標題', 'title', '專利名稱', '名稱',
+      '摘要', 'abstract', '專利摘要',
+      'novelty', '新穎性', 'dwpi novelty',
+      'use', '用途', 'dwpi use',
+      'advantage', '優點', 'dwpi advantage',
+      'claim', '申請專利範圍', '權利要求', '主權項', 'first claim',
+      'ai技術簡述', '技術特徵手段', '解決的技術問題或技術效益', '初篩結果',
+      'summary_title', 'mind_map_title', 'id', '_id', '__rownum__'
+    ];
+    return coreKeywords.some(kw => k === kw || k.includes(kw));
+  };
+
+  const sanitizedAvailableFields = useMemo(() => {
+    return allAvailableFields.filter(f => !isCoreRequiredColumn(f.id));
+  }, [allAvailableFields]);
+
   // Local state for modal settings
   const [filterField, setFilterField] = useState(currentConfig?.filterField || '');
   const [filterValue, setFilterValue] = useState(currentConfig?.filterValue || '__ALL__');
@@ -72,8 +94,8 @@ const HeatmapSettingsModal = ({
   const applyPresetKeyTechVsYear = () => {
     // X-axis: All application years (1 level)
     // Y-axis: Top 5 Tech Level 1 (1 level)
-    let yearField = allAvailableFields.find(f => f.id === '申請年' || f.id === '申請日')?.id || '申請年';
-    let tech1Field = allAvailableFields.find(f => f.id === '技術1階')?.id || '技術1階';
+    let yearField = sanitizedAvailableFields.find(f => f.id === '申請年' || f.id === '申請日')?.id || '申請年';
+    let tech1Field = sanitizedAvailableFields.find(f => f.id === '技術1階')?.id || '技術1階';
 
     setXAxisLevels(1);
     setXAxisField1(yearField);
@@ -89,9 +111,9 @@ const HeatmapSettingsModal = ({
   const applyPresetKeyTechVsCompany = () => {
     // X-axis: Top 10 Tech Level 1 > Tech Level 2 (2 levels)
     // Y-axis: Top 10 Optimized Assignee (1 level)
-    let tech1Field = allAvailableFields.find(f => f.id === '技術1階')?.id || '技術1階';
-    let tech2Field = allAvailableFields.find(f => f.id === '技術2階')?.id || '技術2階';
-    let companyField = allAvailableFields.find(f =>
+    let tech1Field = sanitizedAvailableFields.find(f => f.id === '技術1階')?.id || '技術1階';
+    let tech2Field = sanitizedAvailableFields.find(f => f.id === '技術2階')?.id || '技術2階';
+    let companyField = sanitizedAvailableFields.find(f =>
       ['Optimized Assignee', '專利權人', '權利人', '申請人'].includes(f.id)
     )?.id || 'Optimized Assignee';
 
@@ -335,7 +357,7 @@ const HeatmapSettingsModal = ({
                   }}
                 >
                   <option value="__NONE__">不篩選 (包含全部資料)</option>
-                  {allAvailableFields.map(f => (
+                  {sanitizedAvailableFields.map(f => (
                     <option key={f.id} value={f.id}>
                       {f.emoji} {f.label} {f.isExcel ? '(Excel擴充欄位)' : ''}
                     </option>
@@ -446,7 +468,7 @@ const HeatmapSettingsModal = ({
                     fontSize: '0.85rem'
                   }}
                 >
-                  {allAvailableFields.map(f => {
+                  {sanitizedAvailableFields.map(f => {
                     const disabledInY = isSelectedInY(f.id);
                     return (
                       <option key={f.id} value={f.id} disabled={disabledInY}>
@@ -477,7 +499,7 @@ const HeatmapSettingsModal = ({
                     }}
                   >
                     <option value="">(請選擇第二階欄位)</option>
-                    {allAvailableFields.map(f => {
+                    {sanitizedAvailableFields.map(f => {
                       const disabledInY = isSelectedInY(f.id);
                       const isSameAsX1 = f.id === xAxisField1;
                       return (
@@ -589,7 +611,7 @@ const HeatmapSettingsModal = ({
                     fontSize: '0.85rem'
                   }}
                 >
-                  {allAvailableFields.map(f => {
+                  {sanitizedAvailableFields.map(f => {
                     const disabledInX = isSelectedInX(f.id);
                     return (
                       <option key={f.id} value={f.id} disabled={disabledInX}>
@@ -620,7 +642,7 @@ const HeatmapSettingsModal = ({
                     }}
                   >
                     <option value="">(請選擇第二階欄位)</option>
-                    {allAvailableFields.map(f => {
+                    {sanitizedAvailableFields.map(f => {
                       const disabledInX = isSelectedInX(f.id);
                       const isSameAsY1 = f.id === yAxisField1;
                       return (
