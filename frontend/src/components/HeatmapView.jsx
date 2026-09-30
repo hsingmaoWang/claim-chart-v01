@@ -119,6 +119,19 @@ const extractYearString = (rawVal, isDateCol) => {
   return str;
 };
 
+// Ensure string labels are treated strictly as categories by Plotly Heatmap engine
+const ensureCategoryString = (str) => {
+  if (str === undefined || str === null) return '';
+  const s = String(str).trim();
+  if (!s) return '';
+  // If string consists entirely of digits or digits with decimal (e.g. "2024", "2000", "2024.0"),
+  // append zero-width space (\u200B) to force Plotly Heatmap to render as Category
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    return `${s}\u200B`;
+  }
+  return s;
+};
+
 // Normalize a dimension value to an array of trimmed, non-empty strings (Requirement a & b)
 const normalizeDimensionValue = (p, dim) => {
   if (!p || !dim) return [];
@@ -155,7 +168,7 @@ const normalizeDimensionValue = (p, dim) => {
     resultStrings = resultStrings.map(s => extractYearString(s, true)).filter(Boolean);
   }
 
-  return [...new Set(resultStrings)];
+  return [...new Set(resultStrings.map(ensureCategoryString))];
 };
 
 // Compute Cartesian product of an array of arrays
