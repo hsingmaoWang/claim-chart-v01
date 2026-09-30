@@ -88,38 +88,81 @@ const getAvailableDimensions = (patents) => {
   return result;
 };
 
-// Normalize a dimension value to an array of trimmed, non-empty strings
+// Helper to check if field is date-related
+const isDateField = (dim) => {
+  if (!dim) return false;
+  const d = String(dim).trim().toLowerCase();
+  return d.includes('年') || d.includes('日') || d.includes('date') || d.includes('year');
+};
+
+const extractYearString = (rawVal, isDateCol) => {
+  if (rawVal === undefined || rawVal === null) return null;
+  const str = String(rawVal).trim();
+  if (!str) return null;
+  if (isDateCol) {
+    // 1. Check if it's a numeric Excel serial date (e.g. 30000 to 70000)
+    const num = Number(str);
+    if (!isNaN(num) && num > 30000 && num < 70000) {
+      try {
+        const jsDate = new Date((num - 25569) * 86400 * 1000);
+        const y = jsDate.getFullYear();
+        if (y >= 1900 && y <= 2099) return String(y);
+      } catch (e) {
+        // fallback to regex
+      }
+    }
+
+    // 2. Match 4-digit year like 19xx or 20xx anywhere in string (e.g. 20240729, 2024-07-29, 2024.0)
+    const match = str.match(/(19\d{2}|20\d{2})/);
+    if (match) return match[1];
+  }
+  return str;
+};
+
+// Normalize a dimension value to an array of trimmed, non-empty strings (Requirement a & b)
 const normalizeDimensionValue = (p, dim) => {
-  if (!p || !dim) return ['其他'];
+  if (!p || !dim) return [];
   let val = p[dim];
 
   // Fallbacks for common aliases
-  if (val === undefined || val === null || val === '') {
+  if (val === undefined || val === null || String(val).trim() === '') {
     if (dim === 'Optimized Assignee') val = p['專利權人'] || p['權利人'] || p['申請人'];
-    else if (dim === '申請年' || dim === '申請日') {
-      val = p['申請年'] || (p['申請日'] ? String(p['申請日']).slice(0, 4) : null);
+    else if (dim === '申請年' || dim === '申請日' || String(dim).toLowerCase().includes('application date')) {
+      val = p['Application Date'] || p['application date'] || p['申請年'] || p['申請日'];
     } else if (dim === '國別') {
       val = p['國別'] || p['公開國'] || p['權利國別'];
     }
   }
 
-  if (!val || (Array.isArray(val) && val.length === 0)) return ['其他'];
+  if (val === undefined || val === null || String(val).trim() === '') return [];
+
+  const isDateCol = isDateField(dim);
+  let resultStrings = [];
 
   if (typeof val === 'string') {
     if (val.includes(',') || val.includes('、')) {
-      return [...new Set(val.split(/[,、]/).map(s => s.trim()).filter(Boolean))];
+      resultStrings = val.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+    } else {
+      resultStrings = [val.trim()];
     }
-    return [val.trim()];
+  } else if (Array.isArray(val)) {
+    resultStrings = val.map(s => String(s).trim()).filter(Boolean);
+  } else {
+    resultStrings = [String(val).trim()];
   }
-  if (Array.isArray(val)) {
-    return [...new Set(val.map(s => String(s).trim()).filter(Boolean))];
+
+  if (isDateCol) {
+    resultStrings = resultStrings.map(s => extractYearString(s, true)).filter(Boolean);
   }
-  return [String(val).trim()];
+
+  return [...new Set(resultStrings)];
 };
 
 // Compute Cartesian product of an array of arrays
 const cartesianProduct = (arrays) => {
-  if (arrays.length === 0) return [[]];
+  if (!arrays || arrays.length === 0) return [[]];
+  // Filter out any empty dimension arrays (empty values)
+  if (arrays.some(arr => !arr || arr.length === 0)) return [];
   return arrays.reduce((acc, curr) => {
     const res = [];
     acc.forEach(a => curr.forEach(b => res.push([...a, b])));
@@ -134,7 +177,7 @@ const isOtherLabel = (str) => {
   return s === '其他' || s.startsWith('其他') || s.endsWith('其他');
 };
 
-// Main matrix builder with Parent-Child Grouping, Top-N filtering, and "其他" positioning
+// Main matrix builder with Top-N filtering and natural grouping (Requirement d)
 function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all') {
   if (!patents || patents.length === 0 || !xDims || xDims.length === 0 || !yDims || yDims.length === 0) {
     return { x: [], y: [], z: [] };
@@ -146,81 +189,49 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
     return cartesianProduct(dimValues);
   };
 
-  // Helper to generate sorted axis labels with Parent-Child Grouping & Top-N & "其他" positioning
+  // Helper to generate sorted axis labels with exact Top-N count (Requirement d)
   const generateSortedAxisLabels = (dims, topNLimit, axisType) => {
-    const parentCounts = new Map();
     const comboCounts = new Map();
-    const parentChildrenMap = new Map();
 
     patents.forEach(p => {
       const pid = p['專利公開公告號'] || String(Math.random());
       const combos = getPatentCombos(p, dims);
       combos.forEach(combo => {
-        const parent = combo[0];
-        const child = combo[1] || null;
+        if (!combo || combo.length === 0 || combo.some(c => !c)) return;
         const comboStr = combo.join(' > ');
-
-        if (!parentCounts.has(parent)) parentCounts.set(parent, new Set());
-        parentCounts.get(parent).add(pid);
-
         if (!comboCounts.has(comboStr)) comboCounts.set(comboStr, new Set());
         comboCounts.get(comboStr).add(pid);
-
-        if (!parentChildrenMap.has(parent)) parentChildrenMap.set(parent, new Set());
-        if (child) parentChildrenMap.get(parent).add(child);
       });
     });
 
-    // Top-N Filtering by patent count
-    let parentEntries = Array.from(parentCounts.entries()).map(([parent, set]) => ({
-      parent,
+    let entries = Array.from(comboCounts.entries()).map(([comboStr, set]) => ({
+      comboStr,
       count: set.size
     }));
 
+    // Top-N Filtering by total patent count for the final displayed axis item (Requirement d)
     if (topNLimit !== 'all' && typeof topNLimit === 'number' && topNLimit > 0) {
-      const sortedByCount = [...parentEntries].sort((a, b) => b.count - a.count);
-      parentEntries = sortedByCount.slice(0, topNLimit);
+      entries.sort((a, b) => b.count - a.count);
+      entries = entries.slice(0, topNLimit);
     }
 
-    // Sort Parents: Regular parents natural sort
-    const regularParents = parentEntries.filter(p => !isOtherLabel(p.parent)).map(p => p.parent);
-    const otherParents = parentEntries.filter(p => isOtherLabel(p.parent)).map(p => p.parent);
+    // Sort entries logically for display
+    const regularEntries = entries.filter(e => !isOtherLabel(e.comboStr));
+    const otherEntries = entries.filter(e => isOtherLabel(e.comboStr));
 
-    regularParents.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-    // X-axis: "其他" parent pushed to END (rightmost)
-    // Y-axis: "情绪/其他" parent placed at INDEX 0 (bottom-most in Plotly y[0])
-    const sortedParents = axisType === 'x'
-      ? [...regularParents, ...otherParents]
-      : [...otherParents, ...regularParents];
-
-    const finalLabels = [];
-
-    sortedParents.forEach(parent => {
-      if (dims.length === 1) {
-        finalLabels.push(parent);
-      } else {
-        // 2 levels: sort children under this parent while keeping them contiguous under parent
-        const childrenSet = parentChildrenMap.get(parent) || new Set();
-        const childrenArr = Array.from(childrenSet);
-
-        const regularChildren = childrenArr.filter(c => !isOtherLabel(c));
-        const otherChildren = childrenArr.filter(c => isOtherLabel(c));
-
-        regularChildren.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-        const sortedChildren = [...regularChildren, ...otherChildren];
-
-        if (sortedChildren.length === 0) {
-          finalLabels.push(parent);
-        } else {
-          sortedChildren.forEach(child => {
-            finalLabels.push(`${parent} > ${child}`);
-          });
-        }
-      }
+    regularEntries.sort((a, b) => {
+      const partsA = a.comboStr.split(' > ');
+      const partsB = b.comboStr.split(' > ');
+      const cmpParent = partsA[0].localeCompare(partsB[0], undefined, { numeric: true, sensitivity: 'base' });
+      if (cmpParent !== 0 || partsA.length === 1 || partsB.length === 1) return cmpParent;
+      return partsA[1].localeCompare(partsB[1], undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    return finalLabels;
+    const sortedComboStrs = axisType === 'x'
+      ? [...regularEntries.map(e => e.comboStr), ...otherEntries.map(e => e.comboStr)]
+      : [...otherEntries.map(e => e.comboStr), ...regularEntries.map(e => e.comboStr)];
+
+    return sortedComboStrs;
   };
 
   const xArr = generateSortedAxisLabels(xDims, xTopN, 'x');
@@ -671,7 +682,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     [0.25, '#50ede3ff'],
     [0.5, '#fbde05ff'],
     [0.75, '#f4a582'],
-    [1.0, '#b2182b']
+    [1.0, '#ff001eff']
   ];
 
   // Annotations (per-cell count labels)

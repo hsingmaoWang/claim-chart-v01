@@ -68,33 +68,92 @@ const HeatmapSettingsModal = ({
     }
   }, [currentConfig, isOpen]);
 
-  // Compute unique filter values when filterField changes
-  const filterValueOptions = useMemo(() => {
-    if (!filterField || filterField === '__NONE__') return [];
-    const set = new Set();
-    patents.forEach(p => {
-      let raw = p[filterField];
-      if (!raw && filterField === 'Optimized Assignee') raw = p['專利權人'] || p['權利人'] || p['申請人'];
-      if (!raw && (filterField === '申請年' || filterField === '申請日')) {
-        raw = p['申請年'] || (p['申請日'] ? String(p['申請日']).slice(0, 4) : null);
-      }
-      if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
-        const valStr = String(raw).trim();
-        if (valStr.includes(',') || valStr.includes('、')) {
-          valStr.split(/[,、]/).forEach(v => set.add(v.trim()));
-        } else {
-          set.add(valStr);
+  // Helper to check if field is date-related
+  const isDateField = (dim) => {
+    if (!dim) return false;
+    const d = String(dim).trim().toLowerCase();
+    return d.includes('年') || d.includes('日') || d.includes('date') || d.includes('year');
+  };
+
+  const extractYearString = (rawVal, isDateCol) => {
+    if (rawVal === undefined || rawVal === null) return null;
+    const str = String(rawVal).trim();
+    if (!str) return null;
+    if (isDateCol) {
+      // 1. Check if it's a numeric Excel serial date (e.g. 30000 to 70000)
+      const num = Number(str);
+      if (!isNaN(num) && num > 30000 && num < 70000) {
+        try {
+          const jsDate = new Date((num - 25569) * 86400 * 1000);
+          const y = jsDate.getFullYear();
+          if (y >= 1900 && y <= 2099) return String(y);
+        } catch (e) {
+          // fallback to regex
         }
       }
+
+      // 2. Match 4-digit year like 19xx or 20xx anywhere in string (e.g. 20240729, 2024-07-29, 2024.0)
+      const match = str.match(/(19\d{2}|20\d{2})/);
+      if (match) return match[1];
+    }
+    return str;
+  };
+
+  // Compute unique filter values with patent counts when filterField changes (Requirement c & a)
+  const filterValueOptions = useMemo(() => {
+    if (!filterField || filterField === '__NONE__') return [];
+    const map = new Map();
+    const isDateCol = isDateField(filterField);
+
+    patents.forEach(p => {
+      const pid = p['專利公開公告號'] || String(Math.random());
+      let raw = p[filterField];
+      if (!raw && filterField === 'Optimized Assignee') raw = p['專利權人'] || p['權利人'] || p['申請人'];
+      if (!raw && (filterField === '申請年' || filterField === '申請日' || String(filterField).toLowerCase().includes('application date'))) {
+        raw = p['Application Date'] || p['application date'] || p['申請年'] || p['申請日'];
+      }
+      if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+        let valStrs = [];
+        const strVal = String(raw).trim();
+        if (strVal.includes(',') || strVal.includes('、')) {
+          valStrs = strVal.split(/[,、]/).map(v => v.trim()).filter(Boolean);
+        } else {
+          valStrs = [strVal];
+        }
+
+        if (isDateCol) {
+          valStrs = valStrs.map(v => extractYearString(v, true)).filter(Boolean);
+        }
+
+        valStrs.forEach(v => {
+          if (!map.has(v)) map.set(v, new Set());
+          map.get(v).add(pid);
+        });
+      }
     });
-    return Array.from(set).sort();
+
+    const result = Array.from(map.entries()).map(([value, pidSet]) => ({
+      value,
+      count: pidSet.size
+    }));
+
+    result.sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true, sensitivity: 'base' }));
+    return result;
   }, [filterField, patents]);
 
-  // Handle preset templates (Requirement 4e)
+  // Handle preset templates (Requirement e)
   const applyPresetKeyTechVsYear = () => {
-    // X-axis: All application years (1 level)
+    // X-axis: Application Date / 申請日 / 申請年 (1 level)
     // Y-axis: Top 5 Tech Level 1 (1 level)
-    let yearField = sanitizedAvailableFields.find(f => f.id === '申請年' || f.id === '申請日')?.id || '申請年';
+    let yearField = sanitizedAvailableFields.find(f => {
+      const idLower = String(f.id).toLowerCase();
+      return idLower.includes('application date') || idLower === 'application date';
+    })?.id;
+
+    if (!yearField) {
+      yearField = sanitizedAvailableFields.find(f => f.id === '申請日' || f.id === '申請年')?.id || 'Application Date';
+    }
+
     let tech1Field = sanitizedAvailableFields.find(f => f.id === '技術1階')?.id || '技術1階';
 
     setXAxisLevels(1);
@@ -387,8 +446,10 @@ const HeatmapSettingsModal = ({
                   }}
                 >
                   <option value="__ALL__">全部數值 (不限定單一項目)</option>
-                  {filterValueOptions.map(v => (
-                    <option key={v} value={v}>{v}</option>
+                  {filterValueOptions.map(item => (
+                    <option key={item.value} value={item.value}>
+                      {item.value} ({item.count})
+                    </option>
                   ))}
                 </select>
               </div>

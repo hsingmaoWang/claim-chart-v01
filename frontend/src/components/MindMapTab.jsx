@@ -1584,19 +1584,20 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             </div>
 
             <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
-              {viewMode === 'tree' ? (
+              <div style={{ display: viewMode === 'tree' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <MindMapTree
                   treeData={treeData}
                   levelHierarchy={levelHierarchy}
                   setLevelHierarchy={setLevelHierarchy}
-                  onCaptureReady={setCaptureImage}
+                  onCaptureReady={viewMode === 'tree' ? setCaptureImage : undefined}
                   authState={authState}
                 />
-              ) : (
+              </div>
+              <div style={{ display: viewMode === 'heatmap' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>Loading Heatmap...</div>}>
-                  <HeatmapView treeData={treeData} onCaptureReady={setCaptureImage} authState={authState} />
+                  <HeatmapView treeData={treeData} onCaptureReady={viewMode === 'heatmap' ? setCaptureImage : undefined} authState={authState} />
                 </Suspense>
-              )}
+              </div>
 
               {/* Start New Button - Bottom Left of the result panel */}
               <button
