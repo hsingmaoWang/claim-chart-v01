@@ -40,7 +40,7 @@ const wrapTitle = (title, charsPerLine = 12) => {
     return lines.join('\n');
 };
 
-const buildTreeData = (patents, levels, title) => {
+const buildTreeData = (patents, levels, title, showOtherCategories = true) => {
     const wrappedTitle = wrapTitle(title || '專利類別心智圖');
     const root = { name: wrappedTitle, children: [], patents: [], isRoot: true };
     if (!patents || !Array.isArray(patents)) return root;
@@ -71,6 +71,11 @@ const buildTreeData = (patents, levels, title) => {
 
         // Deduplicate the chosen categories for this level
         nodeValues = [...new Set(nodeValues)];
+
+        // Filter out "其他" if showOtherCategories is false
+        if (!showOtherCategories) {
+            nodeValues = nodeValues.filter(v => v !== '其他');
+        }
 
         nodeValues.forEach(val => {
             let childNode = currentNode.children.find(c => c.name === val);
@@ -125,7 +130,7 @@ const generateMarkdown = (node, depth = 0) => {
     return result;
 };
 
-const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureReady, authState }) => {
+const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureReady, authState, showOtherCategories = true, setShowOtherCategories }) => {
     const treeContainerRef = useRef(null);
     const svgRef = useRef(null);
     const markmapRef = useRef(null);
@@ -155,8 +160,8 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
             }
         }
         if (!patentsArray || !Array.isArray(patentsArray)) patentsArray = [];
-        return buildTreeData(patentsArray, levelHierarchy, treeData.summary_title || treeData.mind_map_title || "專利類別心智圖");
-    }, [treeData, levelHierarchy]);
+        return buildTreeData(patentsArray, levelHierarchy, treeData.summary_title || treeData.mind_map_title || "專利類別心智圖", showOtherCategories);
+    }, [treeData, levelHierarchy, showOtherCategories]);
 
     const captureImage = useCallback(async () => {
         const svgEl = svgRef.current;
@@ -553,7 +558,7 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
         <div style={{ display: 'flex', width: '100%', minHeight: '80vh' }}>
 
             {/* Sidebar for hierarchy Drag & Drop */}
-            <div style={{ width: '250px', padding: '1rem', borderRight: '1px solid rgba(255, 255, 255, 0.2)', background: 'rgba(255,255,255,0.05)', zIndex: 10 }}>
+            <div style={{ width: '250px', padding: '1rem 1rem 4.5rem 1rem', borderRight: '1px solid rgba(255, 255, 255, 0.2)', background: 'rgba(255,255,255,0.05)', zIndex: 10, overflowY: 'auto' }}>
                 <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#fff' }}>拖曳改變階層順序</h3>
                 <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     <SortableContext items={levelHierarchy.map(i => i.id)} strategy={verticalListSortingStrategy}>
@@ -562,6 +567,33 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                         ))}
                     </SortableContext>
                 </DndContext>
+
+                {setShowOtherCategories && (
+                    <div style={{
+                        marginTop: '1rem',
+                        padding: '0.75rem',
+                        borderRadius: '0.6rem',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none' }}>
+                            <input
+                                type="checkbox"
+                                checked={showOtherCategories}
+                                onChange={(e) => setShowOtherCategories(e.target.checked)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#0ea5e9' }}
+                            />
+                            <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#f8fafc' }}>
+                                    顯示「其他」類別
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>
+                                    {showOtherCategories ? '顯示未分類之「其他」節點' : '已隱藏未分類之「其他」節點'}
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                )}
             </div>
 
             {/* Main Tree Canvas using Markmap */}

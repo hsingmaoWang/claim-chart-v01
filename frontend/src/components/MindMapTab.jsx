@@ -5,10 +5,13 @@ import ColumnSelectionModal from './ColumnSelectionModal';
 import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
+const SunburstView = lazy(() => import('./SunburstView'));
 
 const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
   const [viewMode, setViewMode] = useState('tree'); // 'tree' or 'heatmap'
+  const [hierarchyType, setHierarchyType] = useState('mindmap'); // 'mindmap' or 'sunburst'
+  const [showOtherCategories, setShowOtherCategories] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [fileInfo, setFileInfo] = useState(null);
   const [treeData, setTreeData] = useState(null);
@@ -1540,7 +1543,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               </div>
               <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
 
-              {/* Segmented View Mode Toggle */}
+              {/* Primary Segmented View Mode Toggle */}
               <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem' }}>
                 <button
                   onClick={() => setViewMode('tree')}
@@ -1556,7 +1559,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     transition: 'all 0.2s'
                   }}
                 >
-                  心智圖
+                  分類階層圖
                 </button>
                 <button
                   onClick={() => setViewMode('heatmap')}
@@ -1572,7 +1575,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     transition: 'all 0.2s'
                   }}
                 >
-                  相關性圖表
+                  進階分析圖
                 </button>
               </div>
 
@@ -1584,15 +1587,81 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             </div>
 
             <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
-              <div style={{ display: viewMode === 'tree' ? 'block' : 'none', width: '100%', height: '100%' }}>
+              {/* Requirement 1: Segmented control for Mindmap vs Sunburst inside graph area upper right */}
+              {viewMode === 'tree' && (
+                <div style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  zIndex: 20,
+                  display: 'inline-flex',
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  backdropFilter: 'blur(8px)',
+                  borderRadius: '0.6rem',
+                  padding: '3px',
+                  border: '1px solid rgba(14, 165, 233, 0.4)',
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+                }}>
+                  <button
+                    onClick={() => setHierarchyType('mindmap')}
+                    style={{
+                      padding: '0.4rem 0.95rem',
+                      borderRadius: '0.45rem',
+                      background: hierarchyType === 'mindmap' ? '#0ea5e9' : 'transparent',
+                      border: 'none',
+                      color: hierarchyType === 'mindmap' ? '#ffffff' : '#94a3b8',
+                      fontWeight: 'bold',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    🌳 心智圖
+                  </button>
+                  <button
+                    onClick={() => setHierarchyType('sunburst')}
+                    style={{
+                      padding: '0.4rem 0.95rem',
+                      borderRadius: '0.45rem',
+                      background: hierarchyType === 'sunburst' ? '#0ea5e9' : 'transparent',
+                      border: 'none',
+                      color: hierarchyType === 'sunburst' ? '#ffffff' : '#94a3b8',
+                      fontWeight: 'bold',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    🍩 旭日圖
+                  </button>
+                </div>
+              )}
+              {/* Classification Hierarchy View: MindMap vs Sunburst */}
+              <div style={{ display: (viewMode === 'tree' && hierarchyType === 'mindmap') ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <MindMapTree
                   treeData={treeData}
                   levelHierarchy={levelHierarchy}
                   setLevelHierarchy={setLevelHierarchy}
-                  onCaptureReady={viewMode === 'tree' ? setCaptureImage : undefined}
+                  onCaptureReady={(viewMode === 'tree' && hierarchyType === 'mindmap') ? setCaptureImage : undefined}
                   authState={authState}
+                  showOtherCategories={showOtherCategories}
+                  setShowOtherCategories={setShowOtherCategories}
                 />
               </div>
+
+              <div style={{ display: (viewMode === 'tree' && hierarchyType === 'sunburst') ? 'block' : 'none', width: '100%', height: '100%' }}>
+                <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>Loading Sunburst Chart...</div>}>
+                  <SunburstView
+                    treeData={treeData}
+                    levelHierarchy={levelHierarchy}
+                    showOtherCategories={showOtherCategories}
+                    setShowOtherCategories={setShowOtherCategories}
+                    onCaptureReady={(viewMode === 'tree' && hierarchyType === 'sunburst') ? setCaptureImage : undefined}
+                    authState={authState}
+                  />
+                </Suspense>
+              </div>
+
               <div style={{ display: viewMode === 'heatmap' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>Loading Heatmap...</div>}>
                   <HeatmapView treeData={treeData} onCaptureReady={viewMode === 'heatmap' ? setCaptureImage : undefined} authState={authState} />
