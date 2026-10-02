@@ -644,9 +644,10 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
       const now = new Date();
       const timestamp = now.toISOString().replace(/[-:.]/g, '').replace('T', '_').slice(0, 15);
+      const prefix = chartType === 'bubble' ? 'bubble' : 'heatmap';
       const a = document.createElement('a');
       a.href = image;
-      a.download = `heatmap_${timestamp}.png`;
+      a.download = `${prefix}_${timestamp}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -664,7 +665,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     } catch (err) {
       console.error('Failed to capture heatmap image', err);
     }
-  }, [theme, authState]);
+  }, [theme, chartType, authState]);
 
   useEffect(() => {
     if (onCaptureReady) {
