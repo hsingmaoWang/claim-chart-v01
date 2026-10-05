@@ -745,6 +745,182 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     return { xs, ys, sizes, colors, texts, maxVal };
   }, [matrixData, showEmpty]);
 
+  // ─── Multi-level Axis Label & Separator Helper Functions ───
+  const cleanLabelText = useCallback((str) => {
+    if (!str) return '';
+    let s = String(str).trim();
+    if (s.startsWith("['") && s.endsWith("']")) {
+      s = s.slice(2, -2).trim();
+    } else if (s.startsWith("[\"") && s.endsWith("\"]")) {
+      s = s.slice(2, -2).trim();
+    } else if (s.startsWith("[") && s.endsWith("]")) {
+      s = s.slice(1, -1).replace(/^['"]|['"]$/g, '').trim();
+    }
+    return s;
+  }, []);
+
+  const isX2Level = xAxisDims.length === 2;
+  const xParsed = useMemo(() => {
+    if (!matrixData?.x) return [];
+    return matrixData.x.map(fullLabel => {
+      const parts = String(fullLabel).split(' > ');
+      if (parts.length >= 2) {
+        return { parent: parts[0], child: parts.slice(1).join(' > '), fullLabel };
+      }
+      return { parent: parts[0], child: parts[0], fullLabel };
+    });
+  }, [matrixData?.x]);
+
+  const xTickText = useMemo(() => {
+    if (!matrixData?.x) return [];
+    if (!isX2Level) {
+      return matrixData.x.map(label => cleanLabelText(label.replace(/ > /g, '\n')));
+    }
+    return xParsed.map(item => cleanLabelText(item.child));
+  }, [matrixData?.x, isX2Level, xParsed, cleanLabelText]);
+
+  const { xLevel1Annotations, xSeparatorShapes } = useMemo(() => {
+    if (!isX2Level || !xParsed.length) {
+      return { xLevel1Annotations: [], xSeparatorShapes: [] };
+    }
+
+    const annotations = [];
+    const shapes = [];
+
+    let groups = [];
+    let currentGroup = null;
+
+    xParsed.forEach((item, index) => {
+      if (!currentGroup || currentGroup.parent !== item.parent) {
+        currentGroup = { parent: item.parent, startIdx: index, endIdx: index };
+        groups.push(currentGroup);
+      } else {
+        currentGroup.endIdx = index;
+      }
+    });
+
+    groups.forEach((g, gIdx) => {
+      const midX = (g.startIdx + g.endIdx) / 2;
+      annotations.push({
+        x: matrixData.x[Math.round(midX)] !== undefined ? (g.startIdx === g.endIdx ? matrixData.x[g.startIdx] : midX) : midX,
+        y: -0.22,
+        xref: 'x',
+        yref: 'paper',
+        text: cleanLabelText(g.parent),
+        showarrow: false,
+        xanchor: 'center',
+        yanchor: 'top',
+        font: {
+          family: 'Outfit, Inter, system-ui, sans-serif',
+          size: 12,
+          color: theme === 'dark' ? '#cbd5e1' : '#1e293b',
+          weight: 'bold'
+        }
+      });
+
+      if (gIdx < groups.length - 1) {
+        const sepX = g.endIdx + 0.5;
+        shapes.push({
+          type: 'line',
+          xref: 'x',
+          x0: sepX,
+          x1: sepX,
+          yref: 'paper',
+          y0: -0.28,
+          y1: 0, // Stops exactly at bottom border of plot area (does NOT draw inside chart)
+          line: {
+            color: theme === 'dark' ? 'rgba(148, 163, 184, 0.45)' : 'rgba(203, 213, 225, 0.9)', // Light gray
+            width: 0.5,
+            dash: 'solid'
+          }
+        });
+      }
+    });
+
+    return { xLevel1Annotations: annotations, xSeparatorShapes: shapes };
+  }, [isX2Level, xParsed, matrixData?.x, theme, cleanLabelText]);
+
+  const isY2Level = yAxisDims.length === 2;
+  const yParsed = useMemo(() => {
+    if (!matrixData?.y) return [];
+    return matrixData.y.map(fullLabel => {
+      const parts = String(fullLabel).split(' > ');
+      if (parts.length >= 2) {
+        return { parent: parts[0], child: parts.slice(1).join(' > '), fullLabel };
+      }
+      return { parent: parts[0], child: parts[0], fullLabel };
+    });
+  }, [matrixData?.y]);
+
+  const yTickText = useMemo(() => {
+    if (!matrixData?.y) return [];
+    if (!isY2Level) {
+      return matrixData.y.map(label => cleanLabelText(label));
+    }
+    return yParsed.map(item => cleanLabelText(item.child));
+  }, [matrixData?.y, isY2Level, yParsed, cleanLabelText]);
+
+  const { yLevel1Annotations, ySeparatorShapes } = useMemo(() => {
+    if (!isY2Level || !yParsed.length) {
+      return { yLevel1Annotations: [], ySeparatorShapes: [] };
+    }
+
+    const annotations = [];
+    const shapes = [];
+
+    let groups = [];
+    let currentGroup = null;
+
+    yParsed.forEach((item, index) => {
+      if (!currentGroup || currentGroup.parent !== item.parent) {
+        currentGroup = { parent: item.parent, startIdx: index, endIdx: index };
+        groups.push(currentGroup);
+      } else {
+        currentGroup.endIdx = index;
+      }
+    });
+
+    groups.forEach((g, gIdx) => {
+      const midY = (g.startIdx + g.endIdx) / 2;
+      annotations.push({
+        x: -0.15,
+        y: matrixData.y[Math.round(midY)] !== undefined ? (g.startIdx === g.endIdx ? matrixData.y[g.startIdx] : midY) : midY,
+        xref: 'paper',
+        yref: 'y',
+        text: cleanLabelText(g.parent),
+        showarrow: false,
+        xanchor: 'right',
+        yanchor: 'middle',
+        font: {
+          family: 'Outfit, Inter, system-ui, sans-serif',
+          size: 12,
+          color: theme === 'dark' ? '#cbd5e1' : '#1e293b',
+          weight: 'bold'
+        }
+      });
+
+      if (gIdx < groups.length - 1) {
+        const sepY = g.endIdx + 0.5;
+        shapes.push({
+          type: 'line',
+          yref: 'y',
+          y0: sepY,
+          y1: sepY,
+          xref: 'paper',
+          x0: -0.25,
+          x1: 0, // Stops exactly at left border of plot area (does NOT draw inside chart)
+          line: {
+            color: theme === 'dark' ? 'rgba(148, 163, 184, 0.45)' : 'rgba(203, 213, 225, 0.9)', // Light gray
+            width: 0.5,
+            dash: 'solid'
+          }
+        });
+      }
+    });
+
+    return { yLevel1Annotations: annotations, ySeparatorShapes: shapes };
+  }, [isY2Level, yParsed, matrixData?.y, theme, cleanLabelText]);
+
   // DnD handlers
   const handleDragStart = useCallback((event) => {
     const { active } = event;
@@ -1478,16 +1654,21 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 autosize: true,
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0)',
-                margin: { l: 160, r: 40, t: 60, b: 180 },
+                margin: {
+                  l: isY2Level ? 220 : 160,
+                  r: 40,
+                  t: 60,
+                  b: isX2Level ? 220 : 180
+                },
                 xaxis: {
                   type: 'category',
                   categoryorder: 'array',
                   categoryarray: matrixData.x,
                   tickmode: 'array',
                   tickvals: matrixData.x,
-                  ticktext: matrixData.x.map(label => label.replace(/ > /g, '<br>> ')),
+                  ticktext: xTickText,
                   automargin: true,
-                  tickangle: -45,
+                  tickangle: isX2Level ? -90 : -45,
                   tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                   gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   zeroline: false
@@ -1498,18 +1679,26 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   categoryarray: matrixData.y,
                   tickmode: 'array',
                   tickvals: matrixData.y,
-                  ticktext: matrixData.y,
+                  ticktext: yTickText,
                   automargin: true,
                   tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                   gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   zeroline: false
                 },
-                annotations: chartType === 'heatmap' ? cellAnnotations : []
+                annotations: [
+                  ...(chartType === 'heatmap' ? cellAnnotations : []),
+                  ...xLevel1Annotations,
+                  ...yLevel1Annotations
+                ],
+                shapes: [
+                  ...xSeparatorShapes,
+                  ...ySeparatorShapes
+                ]
               };
 
               return (
                 <Plot
-                  key={`plot_${chartType}_${theme}_${matrixData.x.length}_${matrixData.y.length}`}
+                  key={`plot_${chartType}_${theme}_${matrixData.x.length}_${matrixData.y.length}_${isX2Level}_${isY2Level}`}
                   data={plotData}
                   layout={plotLayout}
                   config={{ responsive: true, displayModeBar: false, doubleClick: false }}

@@ -59,8 +59,8 @@ const generateHierarchicalColors = (nodes, theme) => {
       children.forEach((child, cIdx) => {
         // Shift hue across siblings for clear visual distinction between categories
         const hueSpread = Math.min(60, childCount * 14);
-        const hueShift = childCount > 1 
-          ? -hueSpread / 2 + (cIdx / (childCount - 1)) * hueSpread 
+        const hueShift = childCount > 1
+          ? -hueSpread / 2 + (cIdx / (childCount - 1)) * hueSpread
           : 0;
         const childHue = (parentHue + hueShift + 360) % 360;
 
@@ -631,7 +631,7 @@ const SunburstView = ({
                 colors: sunburstData.colors,
                 line: {
                   color: theme === 'dark' ? '#0f172a' : '#ffffff',
-                  width: 1.5
+                  width: 1.8
                 }
               }
             }]}
