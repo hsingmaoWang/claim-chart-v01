@@ -18,18 +18,25 @@ const HeatmapSettingsModal = ({
   const isCoreRequiredColumn = (key) => {
     if (!key) return true;
     const k = String(key).trim().toLowerCase();
-    const coreKeywords = [
+
+    // Exact system/metadata keys or short ambiguous names that should match strictly
+    const exactCoreKeys = new Set([
+      'id', '_id', '__rownum__', 'summary_title', 'mind_map_title',
+      'title', 'abstract', 'use', 'novelty', 'advantage', 'claim', 'claims',
+      '標題', '摘要', '用途', '優點', '新穎性', '主權項'
+    ]);
+    if (exactCoreKeys.has(k)) return true;
+
+    // Specific substring matches for compound title/abstract/claim/DWPI/AI text or identifier columns
+    const coreSubstrings = [
       '專利公開公告號', '公開號', '公開公告號', '專利號', '申請號', 'publication number', 'patent number', 'pub_no', 'patent_no',
-      '標題', 'title', '專利名稱', '名稱',
-      '摘要', 'abstract', '專利摘要',
-      'novelty', '新穎性', 'dwpi novelty',
-      'use', '用途', 'dwpi use',
-      'advantage', '優點', 'dwpi advantage',
-      'claim', '申請專利範圍', '權利要求', '主權項', 'first claim',
-      'ai技術簡述', '技術特徵手段', '解決的技術問題或技術效益', '初篩結果',
-      'summary_title', 'mind_map_title', 'id', '_id', '__rownum__'
+      '專利名稱', 'title - dwpi', '標題 title',
+      '專利摘要', 'abstract - dwpi', 'dwpi novelty', 'dwpi use', 'dwpi advantage',
+      '申請專利範圍', '權利要求', 'first claim',
+      'ai技術簡述', '技術特徵手段', '解決的技術問題或技術效益', '初篩結果'
     ];
-    return coreKeywords.some(kw => k === kw || k.includes(kw));
+
+    return coreSubstrings.some(sub => k === sub || k.includes(sub));
   };
 
   const sanitizedAvailableFields = useMemo(() => {
