@@ -559,7 +559,7 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
 
             {/* Sidebar for hierarchy Drag & Drop */}
             <div style={{ width: '250px', padding: '1rem 1rem 4.5rem 1rem', borderRight: '1px solid rgba(255, 255, 255, 0.2)', background: 'rgba(255,255,255,0.05)', zIndex: 10, overflowY: 'auto' }}>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#fff' }}>拖曳改變階層順序</h3>
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#fff' }}>心智圖階層順序 (拖曳調整)</h3>
                 <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     <SortableContext items={levelHierarchy.map(i => i.id)} strategy={verticalListSortingStrategy}>
                         {levelHierarchy.map((lvl) => (

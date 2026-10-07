@@ -94,7 +94,7 @@ const SunburstView = ({
 }) => {
   const [theme, setTheme] = useState('dark');
   const [selectedNodePatents, setSelectedNodePatents] = useState(null);
-  const [maxDepth, setMaxDepth] = useState(0); // 0 means show all levels
+  const [maxDepth, setMaxDepth] = useState(3); // 0 means show all levels; 3 means show 3 levels
   const containerRef = useRef(null);
 
   // Local hierarchy state for Sunburst (initialized with parent levelHierarchy)
@@ -455,7 +455,7 @@ const SunburstView = ({
               <div style={{ fontSize: '0.82rem', fontWeight: '700', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                 顯示「其他」類別
               </div>
-              <div style={{ fontSize: '0.68rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)', marginTop: '2px' }}>
+              <div style={{ fontSize: '0.75rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)', marginTop: '2px' }}>
                 {showOtherCategories ? '顯示未分類之「其他」節點' : '已隱藏未分類之「其他」節點'}
               </div>
             </div>
@@ -487,10 +487,10 @@ const SunburstView = ({
               cursor: 'pointer'
             }}
           >
-            <option value={0}>展開全部階層 (默認)</option>
+            <option value={0}>展開全部階層</option>
             <option value={1}>僅顯示 Level 1 分支</option>
             <option value={2}>顯示至 Level 2 分支</option>
-            <option value={3}>顯示至 Level 3 分支</option>
+            <option value={3}>顯示至 Level 3 分支(預設)</option>
             <option value={4}>顯示至 Level 4 分支</option>
           </select>
         </div>
@@ -503,13 +503,13 @@ const SunburstView = ({
           borderRadius: '0.6rem',
           background: theme === 'dark' ? 'rgba(56, 189, 248, 0.08)' : 'rgba(2, 132, 199, 0.06)',
           border: `1px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(2, 132, 199, 0.2)'}`,
-          fontSize: '0.72rem',
+          fontSize: '0.80rem',
           color: theme === 'dark' ? '#7dd3fc' : '#0284c7',
           lineHeight: 1.5
         }}>
           💡 <strong>操作提示：</strong><br />
-          • 單擊類別：展開/聚焦該分支 (Zoom In)<br />
-          • 單擊圓心：返回上一層 (Zoom Out)<br />
+          • <strong>單擊類別</strong>：展開/聚焦該分支 (Zoom In)<br />
+          • <strong>單擊圓心</strong>：返回上一層 (Zoom Out)<br />
           • <strong>雙擊類別</strong>：開啟專利詳情面板
         </div>
       </div>

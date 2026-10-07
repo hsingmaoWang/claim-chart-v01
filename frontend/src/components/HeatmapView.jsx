@@ -78,10 +78,10 @@ const getAvailableDimensions = (patents) => {
   excelKeys.forEach(key => {
     let emoji = '📊';
     const kLower = key.toLowerCase();
-    if (['Optimized Assignee', '專利權人', '權利人', '申請人'].includes(key)) emoji = '🏢';
-    else if (['申請年', '申請日'].includes(key) || kLower.includes('date')) emoji = '📅';
-    else if (['國別', '公開國', '權利國別'].includes(key)) emoji = '🌐';
-    else if (['IPC', '專利分類號'].includes(key)) emoji = '🏷️';
+    if (kLower.includes('assignee') || kLower.includes('applicant') || key.includes('專利權人') || key.includes('權利人') || key.includes('申請人')) emoji = '🏢';
+    else if (kLower.includes('date') || kLower.includes('year') || key.includes('年') || key.includes('日')) emoji = '📅';
+    else if (kLower.includes('country') || key.includes('國')) emoji = '🌐';
+    else if (kLower.includes('ipc') || kLower.includes('cpc') || key.includes('分類')) emoji = '🏷️';
     else if (kLower.includes('family') || key.includes('家族')) emoji = '👪';
 
     result.push({
