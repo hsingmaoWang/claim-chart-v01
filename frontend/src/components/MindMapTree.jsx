@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import html2canvas from 'html2canvas';
-import { Download, Sun, Moon } from 'lucide-react';
+import { Download, Sun, Moon, Layers } from 'lucide-react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -558,8 +558,26 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
         <div style={{ display: 'flex', width: '100%', minHeight: '80vh' }}>
 
             {/* Sidebar for hierarchy Drag & Drop */}
-            <div style={{ width: '250px', padding: '1rem 1rem 4.5rem 1rem', borderRight: '1px solid rgba(255, 255, 255, 0.2)', background: 'rgba(255,255,255,0.05)', zIndex: 10, overflowY: 'auto' }}>
-                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#fff' }}>心智圖階層順序 (拖曳調整)</h3>
+            <div style={{
+                width: '250px',
+                padding: '1rem 1rem 4.5rem 1rem',
+                borderRight: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
+                background: theme === 'dark' ? 'rgba(15, 23, 42, 0.6)' : 'rgba(248, 250, 252, 0.8)',
+                zIndex: 10,
+                overflowY: 'auto'
+            }}>
+                <h3 style={{
+                    fontSize: '0.95rem',
+                    fontWeight: '700',
+                    color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                }}>
+                    <Layers size={16} color={theme === 'dark' ? '#38bdf8' : '#0284c7'} />
+                    心智圖階層順序 (拖曳調整)
+                </h3>
                 <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     <SortableContext items={levelHierarchy.map(i => i.id)} strategy={verticalListSortingStrategy}>
                         {levelHierarchy.map((lvl) => (
@@ -573,8 +591,8 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                         marginTop: '1rem',
                         padding: '0.75rem',
                         borderRadius: '0.6rem',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                        background: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                        border: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'}`
                     }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none' }}>
                             <input
@@ -584,10 +602,10 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                                 style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#0ea5e9' }}
                             />
                             <div>
-                                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#f8fafc' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                     顯示「其他」類別
                                 </div>
-                                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>
+                                <div style={{ fontSize: '0.75rem', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)', marginTop: '2px' }}>
                                     {showOtherCategories ? '顯示未分類之「其他」節點' : '已隱藏未分類之「其他」節點'}
                                 </div>
                             </div>
