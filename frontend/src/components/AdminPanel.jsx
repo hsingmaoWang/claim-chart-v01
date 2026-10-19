@@ -448,7 +448,7 @@ const s = {
   overlay: {
     position: 'fixed', inset: 0, zIndex: 999,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'rgba(6,11,40,0.75)', backdropFilter: 'blur(10px)',
+    background: 'rgba(62, 89, 241, 0.75)', backdropFilter: 'blur(10px)',
   },
   modal: {
     width: 'clamp(432px, 92vw, 1100px)',

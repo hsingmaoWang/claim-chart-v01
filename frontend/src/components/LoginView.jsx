@@ -225,7 +225,7 @@ const styles = {
     position: 'absolute',
     inset: 0,
     backgroundImage: "url('/images/login-bg.png')",
-    backgroundSize: 'cover',
+    backgroundSize: 'contain',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
     zIndex: 0,
@@ -233,7 +233,7 @@ const styles = {
   overlay: {
     position: 'absolute',
     inset: 0,
-    background: 'linear-gradient(110deg, rgba(6,11,40,0.72) 0%, rgba(6,20,60,0.55) 55%, rgba(6,11,40,0.85) 100%)',
+    background: 'linear-gradient(110deg, rgba(6, 11, 40, 0.72) 0%, rgba(92, 120, 196, 0.55) 55%, rgba(87, 224, 252, 0.85) 100%)',
     zIndex: 1,
   },
   brandArea: {

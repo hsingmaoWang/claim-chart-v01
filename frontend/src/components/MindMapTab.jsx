@@ -883,8 +883,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               textAlign: 'center',
               padding: '4rem 2rem',
               borderRadius: '1.5rem',
-              border: isDragging ? '2px dashed var(--color-primary)' : '1px solid var(--color-border)',
-              background: isDragging ? 'rgba(34, 211, 238, 0.2)' : 'var(--color-surface)',
+              border: isDragging ? '2px dashed var(--color-primary)' : '2px dashed rgba(8, 145, 178, 0.2)',
+              background: isDragging ? 'rgb(172, 227, 229)' : 'rgba(228, 251, 250, 0.995)',
               transition: 'all 0.3s ease',
               cursor: 'pointer'
             }}
@@ -893,7 +893,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             onDragOver={handleDrag}
             onDrop={handleDrop}
           >
-            <Upload size={52} color={isDragging ? 'var(--color-secondary)' : 'var(--color-text)'} style={{ marginBottom: '1rem' }} />
+            <Upload size={52} color={'var(--color-primary)'} style={{ marginBottom: '1rem' }} />
             <h2 style={{ fontSize: '1.8rem', marginBottom: '0.8rem' }}>Upload Excel Data for Patent Map</h2>
             <p style={{ color: 'var(--color-text-muted)', marginBottom: '2rem' }}>Drag and drop your file here, or click to browse. Excel formats are supported.</p>
             <div>
@@ -909,12 +909,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
       {appState === 'screening_setup' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px', margin: '2rem auto', width: '100%' }}>
-          <div className="glass-panel" style={{ padding: '2rem 2.5rem', borderRadius: '1.5rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div className="glass-panel" style={{ padding: '2rem 2.5rem', borderRadius: '1.5rem', border: '1px solid #60a5fa', background: '#6ebfd3ff', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: 'var(--color-text)' }}>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: '#0a6ce4ff' }}>
                 🔍 落入範圍初篩設定 (Scope Screening Settings)
               </h3>
-              <span style={{ fontSize: '0.8rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.15)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+              <span style={{ fontSize: '0.8rem', color: '#2366b9ff', background: 'rgba(59, 130, 246, 0.15)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
                 步驟 2 / 2
               </span>
             </div>
@@ -932,15 +932,15 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     padding: '0.65rem 0.8rem',
                     borderRadius: '0.5rem',
                     border: '1px solid var(--color-border)',
-                    background: 'rgba(255,255,255,0.08)',
-                    color: '#CCEEFF',
+                    background: 'rgba(153, 227, 245, 0.91)',
+                    color: '#4b4a4aff',
                     outline: 'none',
                     fontSize: '0.95rem'
                   }}
                 >
-                  <option value="" style={{ background: '#011331ff' }}>-- 請選擇準則類型或自行輸入 --</option>
+                  <option value="" style={{ background: '#085b82ff' }}>-- 請選擇準則類型或自行輸入 --</option>
                   {templates.map(t => (
-                    <option key={t.id} value={t.id} style={{ background: '#011331ff' }}>{t.name}</option>
+                    <option key={t.id} value={t.id} style={{ background: '#085b82ff' }}>{t.name}</option>
                   ))}
                 </select>
               </div>
@@ -957,10 +957,10 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       padding: '0.4rem 1.2rem',
                       borderRadius: '0.5rem',
                       background: (!screeningCriteria.trim() || isGeneratingCriteria)
-                        ? 'rgba(255,255,255,0.1)'
+                        ? 'rgba(255,255,255,0.2)'
                         : 'linear-gradient(135deg, #0891b2, #1d4ed8)',
                       color: (!screeningCriteria.trim() || isGeneratingCriteria)
-                        ? 'rgba(255,255,255,0.3)'
+                        ? 'rgba(255,255,255,0.5)'
                         : 'white',
                       border: 'none',
                       cursor: (!screeningCriteria.trim() || isGeneratingCriteria)
@@ -992,8 +992,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     padding: '0.75rem',
                     borderRadius: '0.5rem',
                     border: '1px solid var(--color-border)',
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'var(--color-text)',
+                    background: 'rgba(153, 227, 245, 0.91)',
+                    color: '#4b4a4aff',
                     outline: 'none',
                     fontSize: '0.95rem',
                     resize: 'none',
@@ -1036,8 +1036,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       )}
 
       {appState === 'review_preprocess' && preprocessResult && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '120%', height: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
-          <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyItems: 'center', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '115%', height: 'calc(100vh - 8rem)', overflow: 'hidden', transform: 'translateX(140px)' }}>
+          <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'rgba(132, 213, 242, 0.91)', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyItems: 'center', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: '200px' }}>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 📊 預處理與初篩結果統計
@@ -1048,31 +1048,31 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             </div>
 
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid var(--color-border)' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.19)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid var(--color-border)' }}>
                 <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>總專利件數</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--color-text)' }}>{preprocessResult.patents.length}</div>
               </div>
-              <div style={{ background: 'rgba(17, 88, 165, 0.1)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(27, 102, 181, 0.3)' }}>
-                <div style={{ fontSize: '0.85rem', color: '#42e2f0ff' }}>落入專利件數 (Y)</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00ffffff' }}>{preprocessResult.y_count}</div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.19)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(27, 102, 181, 0.3)' }}>
+                <div style={{ fontSize: '0.85rem', color: '#3f90faff' }}>落入專利件數 (Y)</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#308ef9ff' }}>{preprocessResult.y_count}</div>
               </div>
-              <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                <div style={{ fontSize: '0.85rem', color: '#fca5a5' }}>不落入專利件數 (N)</div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.19)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                <div style={{ fontSize: '0.85rem', color: '#f98080ff' }}>不落入專利件數 (N)</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ef4444' }}>{preprocessResult.n_count}</div>
               </div>
-              <div style={{ background: 'rgba(168, 85, 247, 0.1)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(168, 85, 247, 0.3)' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.19)', padding: '0.75rem 1.5rem', borderRadius: '0.75rem', textAlign: 'center', minWidth: '100px', border: '1px solid rgba(168, 85, 247, 0.3)' }}>
                 <div style={{ fontSize: '0.85rem', color: '#9f45d6ff' }}>篩選命中率</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#bc55f7ff' }}>{preprocessResult.hit_rate}</div>
               </div>
             </div>
           </div>
 
-          <div className="glass-panel" style={{ flex: 1, padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="glass-panel" style={{ flex: 1, padding: '1.5rem', borderRadius: '1rem', border: '3px solid var(--color-border)', background: 'rgba(168, 223, 243, 0.91)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <h3 style={{ fontSize: '1.1rem', margin: '0 0 1rem 0', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
               📋 預處理明細預覽 (顯示前 50 件)
             </h3>
 
-            <div style={{ flex: 1, overflowY: 'auto' }}>
+            <div style={{ flex: 1, overflowY: 'auto', background: 'rgba(180, 230, 249, 0.91)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
@@ -1087,7 +1087,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                 <tbody>
                   {preprocessResult.patents.slice(0, 50).map((p, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '0.75rem 0.5rem', fontWeight: '500', color: 'LightCyan', whiteSpace: 'nowrap' }}>{p.專利公開公告號}</td>
+                      <td style={{ padding: '0.75rem 0.5rem', fontWeight: '500', color: 'rgba(0, 153, 255, 0.91)', whiteSpace: 'nowrap' }}>{p.專利公開公告號}</td>
                       <td style={{ padding: '0.75rem 0.5rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.標題}>{p.標題}</td>
                       <td style={{ padding: '0.75rem 0.5rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.AI技術簡述}>{p.AI技術簡述}</td>
                       <td style={{ padding: '0.75rem 0.5rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.技術特徵手段}>{p.技術特徵手段}</td>
@@ -1181,21 +1181,21 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       {bypassDialog && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 200,
-          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+          background: 'var(--color-surface)', backdropFilter: 'blur(1px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
           <div className="glass-panel" style={{
-            padding: '2.5rem 2rem', borderRadius: '1.5rem',
+            padding: '3.5rem 2rem', borderRadius: '1.5rem',
             border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
+            background: 'rgba(204, 217, 217, 0.97)',
             maxWidth: '480px', width: '90%',
             textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
           }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📋</div>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '1rem', color: 'lightskyblue' }}>
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '1rem', color: 'rgba(58, 129, 199, 0.99)' }}>
               偵測到已分析之 Excel 檔案
             </h3>
-            <p style={{ color: 'mediumaquamarine', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+            <p style={{ color: 'rgba(10, 161, 194, 0.99)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
               啟動直接生成分類心智圖 (Bypass) 流程。
             </p>
             <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -1226,13 +1226,13 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       {resumeDialog && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 200,
-          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+          background: 'var(--color-surface)', backdropFilter: 'blur(1px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
           <div className="glass-panel" style={{
             padding: '2.5rem 2rem', borderRadius: '1.5rem',
             border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
+            background: 'rgba(204, 217, 217, 0.97)',
             maxWidth: '480px', width: '90%',
             textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
           }}>
@@ -1272,13 +1272,13 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       )}
 
       {appState === 'review_stage1' && stage1Taxonomy && (
-        <div className="taxonomy-review-workspace" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', margin: '0 auto', height: 'calc(100vh - 8rem)', maxHeight: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
+        <div className="taxonomy-review-workspace" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '120%', margin: '0 auto', height: 'calc(100vh - 8rem)', maxHeight: 'calc(100vh - 8rem)', overflow: 'hidden', transform: 'translateX(60px)' }}>
           {/* Header Action Bar */}
-          <div className="glass-panel" style={{ padding: '1rem 1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div className="glass-panel" style={{ padding: '1rem 1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'rgba(98, 219, 240, 0.61)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: '300px' }}>
               <Layers size={24} color="var(--color-primary)" />
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>第一階段分類心智圖名稱</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'rgba(3, 62, 198, 1)', textTransform: 'uppercase' }}>第一階段分類心智圖名稱</span>
                 <input
                   value={stage1Taxonomy.summary_title}
                   onChange={(e) => setStage1Taxonomy({ ...stage1Taxonomy, summary_title: e.target.value })}
@@ -1305,7 +1305,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               <button
                 onClick={handleGenerateStage2}
                 className="btn-primary"
-                style={{ padding: '0.6rem 1.5rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', background: 'var(--color-primary)', border: 'none', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 10px var(--color-primary-glow)' }}
+                style={{ padding: '0.6rem 1.5rem', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', background: 'rgba(4, 169, 251, 0.79)', border: 'none', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 10px var(--color-primary-glow)' }}
               >
                 <Sparkles size={16} /> 🚀 生成技術 3 階
               </button>
@@ -1318,7 +1318,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             {/* Column 1: Domain & Efficacy */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', overflow: 'hidden' }}>
               {/* Domain Card */}
-              <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'rgba(135, 205, 237, 1)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>🎯 1. 應用領域校正</span>
                   <span style={{ fontSize: '0.75rem', background: 'DodgerBlue', color: 'White', padding: '2px 8px', borderRadius: '0.5rem' }}>
@@ -1335,21 +1335,21 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       />
                       <button
                         onClick={() => openViewModal('應用領域', domain)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(248, 250, 196, 1)', cursor: 'pointer', padding: '0.2rem' }}
                         title="查看/編輯定義"
                       >
                         <HelpCircle size={16} />
                       </button>
                       <button
                         onClick={() => openEditModal('應用領域', domain, index)}
-                        style={{ border: 'none', background: 'transparent', color: 'Aquamarine', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(3, 124, 168, 0.38)', cursor: 'pointer', padding: '0.2rem' }}
                         title="詳細修改"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => deleteDomain(index)}
-                        style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(255, 4, 4, 0.38)', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除"
                       >
                         <Trash2 size={16} />
@@ -1367,7 +1367,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               </div>
 
               {/* Efficacy Card */}
-              <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'rgba(135, 205, 237, 1)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>⚡ 2. 功效節點校正</span>
                   <span style={{ fontSize: '0.75rem', background: 'DodgerBlue', color: 'White', padding: '2px 8px', borderRadius: '0.5rem' }}>
@@ -1384,21 +1384,21 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       />
                       <button
                         onClick={() => openViewModal('功效節點', eff)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-secondary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(248, 250, 196, 1)', cursor: 'pointer', padding: '0.2rem' }}
                         title="查看/編輯定義"
                       >
                         <HelpCircle size={16} />
                       </button>
                       <button
                         onClick={() => openEditModal('功效節點', eff, index)}
-                        style={{ border: 'none', background: 'transparent', color: 'Aquamarine', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(3, 124, 168, 0.38)', cursor: 'pointer', padding: '0.2rem' }}
                         title="詳細修改"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => deleteEfficacy(index)}
-                        style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(255, 4, 4, 0.38)', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除"
                       >
                         <Trash2 size={16} />
@@ -1417,7 +1417,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             </div>
 
             {/* Column 2: Tech Levels 1-2 */}
-            <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'rgba(135, 205, 237, 1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--color-text)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>🛠️ 3. 技術 1-2 階分類校正</span>
                 <span style={{ fontSize: '0.75rem', background: 'DodgerBlue', color: 'White', padding: '2px 8px', borderRadius: '0.5rem' }}>
@@ -1437,21 +1437,21 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                       />
                       <button
                         onClick={() => openViewModal('技術1階', t1Item.技術1階)}
-                        style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(248, 250, 196, 1)', cursor: 'pointer', padding: '0.2rem' }}
                         title="查看/編輯定義"
                       >
                         <HelpCircle size={16} />
                       </button>
                       <button
                         onClick={() => openEditModal('技術1階', t1Item.技術1階, t1Idx)}
-                        style={{ border: 'none', background: 'transparent', color: 'MediumSpringGreen', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(3, 124, 168, 0.38)', cursor: 'pointer', padding: '0.2rem' }}
                         title="詳細修改"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => deleteT1(t1Idx)}
-                        style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.2rem' }}
+                        style={{ border: 'none', background: 'transparent', color: 'rgba(255, 4, 4, 0.38)', cursor: 'pointer', padding: '0.2rem' }}
                         title="刪除整條分支"
                       >
                         <Trash2 size={16} />
@@ -1470,21 +1470,21 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                           />
                           <button
                             onClick={() => openViewModal('技術2階', t2Item)}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', cursor: 'pointer', padding: '0.2rem' }}
+                            style={{ border: 'none', background: 'transparent', color: 'rgba(248, 250, 196, 1)', cursor: 'pointer', padding: '0.2rem' }}
                             title="查看/編輯定義"
                           >
                             <HelpCircle size={14} />
                           </button>
                           <button
                             onClick={() => openEditModal('技術2階', t2Item, t2Idx, t1Idx)}
-                            style={{ border: 'none', background: 'transparent', color: 'MediumSpringGreen', cursor: 'pointer', padding: '0.1rem' }}
+                            style={{ border: 'none', background: 'transparent', color: 'rgba(3, 124, 168, 0.38)', cursor: 'pointer', padding: '0.1rem' }}
                             title="詳細修改"
                           >
                             <Edit2 size={13} />
                           </button>
                           <button
                             onClick={() => deleteT2(t1Idx, t2Idx)}
-                            style={{ border: 'none', background: 'transparent', color: 'IndianRed', cursor: 'pointer', padding: '0.1rem' }}
+                            style={{ border: 'none', background: 'transparent', color: 'rgba(255, 4, 4, 0.38)', cursor: 'pointer', padding: '0.1rem' }}
                             title="刪除"
                           >
                             <Trash2 size={14} />
@@ -1518,9 +1518,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
       {
         appState === 'tree' && treeData && (
-          <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%', margin: '0 auto' }}>
+          <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%', margin: '0 auto', transform: 'translateX(120px)' }}>
 
-            <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(44, 139, 255, 0.7), rgba(86, 221, 251, 0.7))', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <label>應用領域:</label>
                 <input name="app_area_count" value={config.app_area_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
@@ -1541,16 +1541,16 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                 <label>功效節點:</label>
                 <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
               </div>
-              <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-border)', cursor: 'pointer' }}>重新分類</button>
+              <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(163, 241, 255, 1)', cursor: 'pointer' }}>重新分類</button>
 
               {/* Primary Segmented View Mode Toggle */}
-              <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem' }}>
+              <div style={{ display: 'inline-flex', background: 'rgba(126, 190, 250, 0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem', gap: '0.5rem' }}>
                 <button
                   onClick={() => setViewMode('tree')}
                   style={{
                     padding: '0.4rem 1rem',
                     borderRadius: '0.4rem',
-                    background: viewMode === 'tree' ? 'var(--color-primary)' : 'transparent',
+                    background: viewMode === 'tree' ? 'rgba(82, 152, 245, 1)' : 'rgba(144, 212, 226, 1)',
                     border: 'none',
                     color: '#fff',
                     fontWeight: 'bold',
@@ -1566,7 +1566,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                   style={{
                     padding: '0.4rem 1rem',
                     borderRadius: '0.4rem',
-                    background: viewMode === 'heatmap' ? 'var(--color-primary)' : 'transparent',
+                    background: viewMode === 'heatmap' ? 'rgba(82, 152, 245, 1)' : 'rgba(144, 212, 226, 1)',
                     border: 'none',
                     color: '#fff',
                     fontWeight: 'bold',
@@ -1581,8 +1581,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
               <div style={{ flex: 1 }} />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => captureImage && captureImage()} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 182, 212, 0.8)', color: 'white', cursor: 'pointer', border: '1px solid #67e8f9' }}>下載 PNG</button>
-                <button onClick={handleExportExcel} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'var(--color-primary)', color: 'white', cursor: 'pointer' }}>下載 Excel</button>
+                <button onClick={() => captureImage && captureImage()} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 158, 185, 0.8)', color: 'white', cursor: 'pointer', border: '1px solid #67e8f9' }}>下載 PNG</button>
+                <button onClick={handleExportExcel} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(6, 158, 185, 0.8)', color: 'white', cursor: 'pointer' }}>下載 Excel</button>
               </div>
             </div>
 
@@ -1707,8 +1707,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            backdropFilter: 'blur(6px)',
+            backgroundColor: 'var(--color-surface)',
+            backdropFilter: 'blur(1px)',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
@@ -1718,7 +1718,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             <div className="glass-panel" style={{
               width: '90%',
               maxWidth: '450px',
-              background: 'var(--color-surface)',
+              background: 'rgba(204, 217, 217, 0.97)',
               border: '1px solid var(--color-border)',
               borderRadius: '1.25rem',
               padding: '2.5rem 2rem',
@@ -1764,7 +1764,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
               <p style={{
                 fontSize: '1rem',
-                color: '#CCEEFF',
+                color: '#047acfb9',
                 margin: 0,
                 lineHeight: 1.6
               }}>
@@ -1803,18 +1803,19 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            backdropFilter: 'blur(4px)',
+            backgroundColor: 'var(--color-surface)',
+            backdropFilter: 'blur(1px)',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
             zIndex: 9999,
-            animation: 'fadeIn 0.2s ease-out'
+            animation: 'fadeIn 0.2s ease-out',
+            width: '130%'
           }}>
             <div className="glass-panel" style={{
               width: '90%',
               maxWidth: '500px',
-              background: 'var(--color-surface)',
+              background: 'rgba(204, 217, 217, 0.95)',
               border: '1px solid var(--color-border)',
               borderRadius: '1.25rem',
               padding: '2rem',

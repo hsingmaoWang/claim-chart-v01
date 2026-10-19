@@ -720,7 +720,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           y: matrixData.y[yi],
           text: val > 0 ? String(val) : '',
           showarrow: false,
-          font: { size: 13, family: 'Outfit, Inter, system-ui, sans-serif', color: textColor }
+          font: { size: 14, family: 'Outfit, Inter, system-ui, sans-serif', color: textColor }
         });
       });
     });
@@ -819,7 +819,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         yanchor: 'top',
         font: {
           family: 'Outfit, Inter, system-ui, sans-serif',
-          size: 12,
+          size: 14,
           color: theme === 'dark' ? '#cbd5e1' : '#1e293b',
           weight: 'bold'
         }
@@ -900,7 +900,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         yanchor: 'middle',
         font: {
           family: 'Outfit, Inter, system-ui, sans-serif',
-          size: 12,
+          size: 14,
           color: theme === 'dark' ? '#cbd5e1' : '#1e293b',
           weight: 'bold'
         }
@@ -1066,7 +1066,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           flexShrink: 0,
           padding: '1.25rem 1rem 80px 1rem',
           borderRight: theme === 'dark' ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-          background: theme === 'dark' ? 'rgba(70, 198, 245, 0.6)' : 'rgba(70, 198, 245, 0.6)',
+          background: theme === 'dark' ? 'rgba(61, 135, 220, 0.83)' : 'rgba(73, 173, 249, 0.6)',
           display: 'flex',
           flexDirection: 'column',
           gap: '1rem',
@@ -1076,7 +1076,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: '700', color: theme === 'dark' ? '#e2e8f0' : '#1e293b', letterSpacing: '0.02em' }}>
               📊 軸維度配置
             </h3>
-            <p style={{ margin: 0, fontSize: '0.72rem', color: theme === 'dark' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.6)', lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '0.72rem', color: theme === 'dark' ? 'rgba(255, 255, 255, 0.58)' : 'rgba(0,0,0,0.8)', lineHeight: 1.5 }}>
               拖曳維度標籤或使用上方 ⚙️ 齒輪進行進階繪圖設定
             </p>
           </div>
@@ -1303,15 +1303,15 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 🔍 篩選: {chartConfig.filterField} = {chartConfig.filterValue}
               </div>
             )}
-            <div>📄 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>分析專利件數：</strong>{patents.length} / {rawPatents.length}</div>
-            <div>📐 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>全矩陣：</strong>{rawMatrix.x.length} × {rawMatrix.y.length}</div>
+            <div>📄 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>分析專利件數：</strong>{patents.length} / {rawPatents.length}</div>
+            <div>📐 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>全矩陣：</strong>{rawMatrix.x.length} × {rawMatrix.y.length}</div>
             {!showEmpty && (removedCols > 0 || removedRows > 0) && (
               <div style={{ color: 'rgba(251,191,36,0.7)', fontSize: '0.68rem' }}>
                 ✂️ 已過濾 {removedCols > 0 ? `${removedCols} 欄` : ''}{removedCols > 0 && removedRows > 0 ? '、' : ''}{removedRows > 0 ? `${removedRows} 列` : ''}
               </div>
             )}
-            <div>📐 <strong style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>顯示矩陣：</strong>{matrixData.x.length} × {matrixData.y.length}</div>
-            <div style={{ marginTop: '0.4rem', fontSize: '0.68rem', color: theme === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.45)' }}>
+            <div>📐 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>顯示矩陣：</strong>{matrixData.x.length} × {matrixData.y.length}</div>
+            <div style={{ marginTop: '0.4rem', fontSize: '0.68rem', color: theme === 'dark' ? 'rgba(255, 255, 255, 0.62)' : 'rgba(0,0,0,0.45)' }}>
               ✱ 每格為相異專利件數，同一件可計入多格
             </div>
           </div>
@@ -1430,9 +1430,10 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           flexDirection: 'column',
           overflow: 'hidden',
           padding: '1.25rem',
-          background: theme === 'dark' ? '#0f172a' : '#ffffff',
+          background: theme === 'dark' ? '#0f172a' : '#ffffffff',
           position: 'relative',
-          transition: 'all 0.3s ease'
+          transition: 'all 0.3s ease',
+          border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
         }}>
 
           {/* Chart title bar */}
@@ -1543,7 +1544,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   style={{
                     background: theme === 'dark' ? '#0ea5e9' : 'transparent',
                     border: 'none',
-                    color: '#fff',
+                    color: theme === 'dark' ? '#fcef7aff' : '#ffffffff',
                     borderRadius: '50%',
                     width: '26px',
                     height: '26px',
@@ -1562,7 +1563,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   style={{
                     background: theme === 'light' ? '#0ea5e9' : 'transparent',
                     border: 'none',
-                    color: theme === 'light' ? '#fff' : '#475569',
+                    color: theme === 'light' ? '#fcef7aff' : '#ffffffff',
                     borderRadius: '50%',
                     width: '26px',
                     height: '26px',
@@ -1582,7 +1583,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
           {/* Heatmap or empty state */}
           <div style={{
             flex: 1,
-            background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+            background: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(255, 255, 255, 1)',
             borderRadius: '1rem',
             border: theme === 'dark' ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(0,0,0,0.05)',
             minHeight: '450px',
@@ -1643,7 +1644,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 text: bubbleData.texts,
                 textposition: 'middle center',
                 textfont: {
-                  size: 11,
+                  size: 13,
                   family: 'Outfit, Inter, system-ui, sans-serif',
                   color: '#ffffff'
                 },
@@ -1676,7 +1677,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   ticktext: xTickText,
                   automargin: true,
                   tickangle: isX2Level ? -90 : -45,
-                  tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 11, color: theme === 'dark' ? '#94a3b8' : '#334155' },
+                  tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 13, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                   gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   zeroline: false
                 },
@@ -1688,7 +1689,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   tickvals: matrixData.y,
                   ticktext: yTickText,
                   automargin: true,
-                  tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 12, color: theme === 'dark' ? '#94a3b8' : '#334155' },
+                  tickfont: { family: 'Outfit, Inter, system-ui, sans-serif', size: 13, color: theme === 'dark' ? '#94a3b8' : '#334155' },
                   gridcolor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
                   zeroline: false
                 },

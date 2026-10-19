@@ -74,15 +74,15 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
       padding: '20px'
     }}>
       <div style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
+        backgroundColor: '#80bce1ff',
+        border: '1px solid rgba(5, 100, 177, 0.1)',
         borderRadius: '16px',
         width: '100%',
         maxWidth: '760px',
         maxHeight: '85vh',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(59, 130, 246, 0.15)',
+        boxShadow: '0 25px 50px -12px rgba(16, 16, 16, 0.5), 0 0 30px rgba(59, 130, 246, 0.15)',
         overflow: 'hidden',
         color: '#f8fafc',
         animation: 'modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
@@ -90,8 +90,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
         {/* Header */}
         <div style={{
           padding: '24px 28px 18px 28px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 1) 0%, rgba(15, 23, 42, 1) 100%)',
+          borderBottom: '1px solid rgba(3, 82, 131, 0.08)',
+          background: 'linear-gradient(135deg, rgba(109, 187, 197, 1) 0%, rgba(50, 108, 243, 1) 100%)',
           display: 'flex',
           alignItems: 'flex-start',
           gap: '16px'
@@ -118,7 +118,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                 fontSize: '0.75rem',
                 padding: '2px 8px',
                 borderRadius: '12px',
-                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                backgroundColor: 'rgba(11, 34, 71, 0.2)',
                 color: '#60a5fa',
                 border: '1px solid rgba(59, 130, 246, 0.3)',
                 fontWeight: 500
@@ -126,7 +126,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                 預處理設定
               </span>
             </div>
-            <p style={{ margin: '6px 0 0 0', fontSize: '0.875rem', color: '#94a3b8' }}>
+            <p style={{ margin: '6px 0 0 0', fontSize: '0.875rem', color: '#111a276e' }}>
               檔案：<span style={{ color: '#cbd5e1', fontWeight: 500 }}>{filename}</span>
             </p>
           </div>
@@ -148,8 +148,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
               gap: '8px',
               marginBottom: '12px'
             }}>
-              <Lock size={16} color="#94a3b8" />
-              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#e2e8f0' }}>
+              <Lock size={16} color="#198bc0ff" />
+              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#2c4467ff' }}>
                 核心必要欄位 <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#64748b' }}>(強制載入 / 無需變更)</span>
               </h4>
             </div>
@@ -158,7 +158,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
               flexWrap: 'wrap',
               gap: '8px',
               padding: '12px 14px',
-              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              backgroundColor: '#88c1e4ff',
               borderRadius: '10px',
               border: '1px solid rgba(255, 255, 255, 0.05)'
             }}>
@@ -170,13 +170,13 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                     gap: '6px',
                     padding: '6px 12px',
                     borderRadius: '6px',
-                    backgroundColor: 'rgba(51, 65, 85, 0.6)',
+                    backgroundColor: 'rgba(53, 119, 154, 0.77)',
                     border: '1px solid rgba(148, 163, 184, 0.2)',
                     color: '#cbd5e1',
                     fontSize: '0.85rem',
                     fontWeight: 500
                   }}>
-                    <Lock size={12} color="#64748b" />
+                    <Lock size={12} color="#adc3e1ff" />
                     <span>{col}</span>
                   </div>
                 ))
@@ -197,13 +197,13 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
               gap: '8px'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Layers size={16} color="#60a5fa" />
-                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#e2e8f0' }}>
+                <Layers size={16} color="#198bc0ff" />
+                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#2c4467ff' }}>
                   可選圖表與統計分析欄位
                 </h4>
                 <span style={{
                   fontSize: '0.75rem',
-                  color: '#94a3b8',
+                  color: '#64748b',
                   backgroundColor: 'rgba(255, 255, 255, 0.06)',
                   padding: '2px 8px',
                   borderRadius: '10px'
@@ -222,7 +222,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                     fontSize: '0.75rem',
                     borderRadius: '6px',
                     backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                    color: '#60a5fa',
+                    color: '#2c6cb9ff',
                     border: '1px solid rgba(59, 130, 246, 0.3)',
                     cursor: 'pointer',
                     fontWeight: 500,
@@ -239,8 +239,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                       padding: '4px 10px',
                       fontSize: '0.75rem',
                       borderRadius: '6px',
-                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                      color: '#34d399',
+                      backgroundColor: 'rgba(92, 189, 157, 0.63)',
+                      color: '#147f58ff',
                       border: '1px solid rgba(16, 185, 129, 0.3)',
                       cursor: 'pointer',
                       fontWeight: 500,
@@ -258,7 +258,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                     fontSize: '0.75rem',
                     borderRadius: '6px',
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    color: '#94a3b8',
+                    color: '#6c7a8fff',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     cursor: 'pointer',
                     fontWeight: 500,
@@ -294,9 +294,9 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                         gap: '8px',
                         padding: '10px 12px',
                         borderRadius: '8px',
-                        backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.18)' : 'rgba(30, 41, 59, 0.5)',
+                        backgroundColor: isChecked ? 'rgba(43, 93, 174, 0.3)' : 'rgba(132, 153, 189, 0.3)',
                         border: isChecked ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.08)',
-                        color: isChecked ? '#ffffff' : '#94a3b8',
+                        color: isChecked ? '#ffffffff' : '#5d6672ff',
                         fontSize: '0.85rem',
                         cursor: 'pointer',
                         userSelect: 'none',
@@ -304,7 +304,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                        <div style={{ color: isChecked ? '#60a5fa' : '#64748b' }}>
+                        <div style={{ color: isChecked ? '#ece0bbff' : '#64748b' }}>
                           {isChecked ? <CheckSquare size={16} /> : <Square size={16} />}
                         </div>
                         <span style={{
@@ -323,7 +323,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                           padding: '1px 5px',
                           borderRadius: '4px',
                           backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                          color: '#34d399',
+                          color: '#b6e7d6ff',
                           border: '1px solid rgba(16, 185, 129, 0.3)',
                           whiteSpace: 'nowrap',
                           flexShrink: 0
@@ -354,7 +354,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
         <div style={{
           padding: '16px 28px',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-          backgroundColor: 'rgba(15, 23, 42, 0.8)',
+          background: 'linear-gradient(135deg, rgba(50, 108, 243, 1) 0%, rgba(100, 141, 236, 1) 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -368,7 +368,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
               onChange={(e) => setEnableScreening(e.target.checked)}
               style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3b82f6' }}
             />
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: enableScreening ? '#60a5fa' : '#94a3b8' }}>
+            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: enableScreening ? '#85f1ffff' : '#bec7d5ff' }}>
               🔍 接續進行落入範圍初篩設定 (Scope Screening)
             </span>
           </label>
@@ -381,7 +381,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                 padding: '9px 18px',
                 borderRadius: '8px',
                 backgroundColor: 'transparent',
-                color: '#94a3b8',
+                color: '#c1c9d3ff',
                 border: '1px solid rgba(255, 255, 255, 0.12)',
                 fontSize: '0.875rem',
                 fontWeight: 500,

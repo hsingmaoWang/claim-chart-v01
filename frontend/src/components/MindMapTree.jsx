@@ -22,11 +22,17 @@ const SortableItem = ({ id, name }) => {
         cursor: 'grab',
         userSelect: 'none',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)',
-        border: '1px solid rgba(103, 232, 249, 0.5)'
+        border: '1px solid rgba(103, 232, 249, 0.5)',
+        textAlign: 'center',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative'
     };
     return (
         <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-            {name}
+            <span>{name}</span>
+            <span style={{ position: 'absolute', right: '0.85rem', fontSize: '0.75rem', opacity: 0.6 }}>::</span>
         </div>
     );
 };
@@ -562,8 +568,11 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
                 width: '250px',
                 padding: '1rem 1rem 4.5rem 1rem',
                 borderRight: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
-                background: theme === 'dark' ? 'rgba(15, 23, 42, 0.6)' : 'rgba(248, 250, 252, 0.8)',
+                background: theme === 'dark' ? 'rgba(48, 129, 172, 0.83)' : 'rgba(73, 173, 249, 0.6)',
                 zIndex: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
                 overflowY: 'auto'
             }}>
                 <h3 style={{
@@ -615,13 +624,13 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
             </div>
 
             {/* Main Tree Canvas using Markmap */}
-            <div ref={treeContainerRef} className={`mindmap-theme-${theme}`} style={{ flex: 1, position: 'relative', background: theme === 'dark' ? '#0f172a' : '#ffffff', overflow: 'hidden' }}>
+            <div ref={treeContainerRef} className={`mindmap-theme-${theme}`} style={{ flex: 1, position: 'relative', background: theme === 'dark' ? '#0f172a' : '#ffffff', overflow: 'hidden', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
 
                 <div style={{ position: 'absolute', top: '1rem', left: '1rem', zIndex: 5, background: 'rgba(0,0,0,0.5)', padding: '0.5rem', borderRadius: '2rem', display: 'flex', gap: '0.5rem' }}>
-                    <button title="不透明黑色" onClick={() => setTheme('dark')} style={{ background: theme === 'dark' ? '#0ea5e9' : 'transparent', border: 'none', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <button title="不透明黑色" onClick={() => setTheme('dark')} style={{ background: theme === 'dark' ? '#0ea5e9' : 'transparent', border: 'none', color: theme === 'dark' ? '#fcef7aff' : '#ffffffff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                         <Moon size={16} />
                     </button>
-                    <button title="不透明白色" onClick={() => setTheme('light')} style={{ background: theme === 'light' ? '#0ea5e9' : 'transparent', border: 'none', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <button title="不透明白色" onClick={() => setTheme('light')} style={{ background: theme === 'light' ? '#0ea5e9' : 'transparent', border: 'none', color: theme === 'light' ? '#fcef7aff' : '#ffffffff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                         <Sun size={16} />
                     </button>
                 </div>

@@ -8,30 +8,31 @@ import { CSS } from '@dnd-kit/utilities';
 
 const Plot = createPlotlyComponent(Plotly);
 
-const SortableItem = ({ id, name }) => {
+const SortableItem = ({ id, name, theme }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     padding: '0.55rem 0.85rem',
     margin: '0.3rem 0',
-    background: 'rgba(14, 165, 233, 0.25)',
+    background: theme === 'light' ? '#2c98ceff' : 'rgba(14, 165, 233, 0.25)',
     color: '#f8fafc',
     borderRadius: '0.5rem',
     cursor: 'grab',
     userSelect: 'none',
     boxShadow: '0 4px 10px rgba(0, 0, 0, 0.25)',
     border: '1px solid rgba(56, 189, 248, 0.4)',
-    fontSize: '0.85rem',
     fontWeight: '600',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'center',
+    textAlign: 'center',
+    position: 'relative'
   };
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <span>{name}</span>
-      <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>::</span>
+      <span style={{ position: 'absolute', right: '0.85rem', fontSize: '0.75rem', opacity: 0.6 }}>::</span>
     </div>
   );
 };
@@ -391,7 +392,7 @@ const SunburstView = ({
         width: '260px',
         padding: '1.25rem 1.25rem 4.5rem 1.25rem', // Issue 3 Fix: Bottom padding 4.5rem to ensure Tip box is raised above Start New button
         borderRight: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
-        background: theme === 'dark' ? 'rgba(15, 23, 42, 0.6)' : 'rgba(248, 250, 252, 0.8)',
+        background: theme === 'dark' ? 'rgba(48, 129, 172, 0.83)' : 'rgba(73, 173, 249, 0.6)',
         zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
@@ -401,7 +402,7 @@ const SunburstView = ({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
             <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Layers size={16} color={theme === 'dark' ? '#38bdf8' : '#0284c7'} /> 旭日圖階層順序
+              <Layers size={16} color={theme === 'dark' ? '#8dd8f9ff' : '#0284c7'} /> 旭日圖階層順序
             </h3>
             {isCustomized && (
               <button
@@ -409,7 +410,7 @@ const SunburstView = ({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#38bdf8',
+                  color: theme === 'dark' ? '#8dd8f9ff' : '#0284c7',
                   fontSize: '0.72rem',
                   cursor: 'pointer',
                   padding: '2px 6px',
@@ -422,7 +423,7 @@ const SunburstView = ({
               </button>
             )}
           </div>
-          <p style={{ fontSize: '0.72rem', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.6)', margin: 0 }}>
+          <p style={{ fontSize: '0.72rem', color: theme === 'dark' ? 'rgba(252, 242, 155, 1)' : 'rgba(0,0,0,0.6)', margin: 0 }}>
             {isCustomized ? '⚡ 目前為旭日圖獨立階層順序' : '🔗 目前階層順序與心智圖連動中（拖曳即可獨立調整）'}
           </p>
         </div>
@@ -431,7 +432,7 @@ const SunburstView = ({
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={sunburstHierarchy.map(i => i.id)} strategy={verticalListSortingStrategy}>
             {sunburstHierarchy.map((lvl) => (
-              <SortableItem key={lvl.id} id={lvl.id} name={lvl.name} />
+              <SortableItem key={lvl.id} id={lvl.id} name={lvl.name} theme={theme} />
             ))}
           </SortableContext>
         </DndContext>
@@ -523,7 +524,8 @@ const SunburstView = ({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        border: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'}`
       }}>
         {/* Theme Switcher */}
         <div style={{
@@ -544,7 +546,7 @@ const SunburstView = ({
             style={{
               background: theme === 'dark' ? '#0ea5e9' : 'transparent',
               border: 'none',
-              color: '#fff',
+              color: theme === 'dark' ? '#fcef7aff' : '#ffffffff',
               borderRadius: '50%',
               width: '28px',
               height: '28px',
@@ -562,7 +564,7 @@ const SunburstView = ({
             style={{
               background: theme === 'light' ? '#0ea5e9' : 'transparent',
               border: 'none',
-              color: theme === 'light' ? '#fff' : '#475569',
+              color: theme === 'light' ? '#fcef7aff' : '#ffffffff',
               borderRadius: '50%',
               width: '28px',
               height: '28px',
@@ -619,12 +621,12 @@ const SunburstView = ({
               insidetextorientation: 'auto',
               insidetextfont: {
                 family: 'Outfit, Inter, system-ui, sans-serif',
-                size: 13,
+                size: 14,
                 color: '#ffffff'
               },
               outsidetextfont: {
                 family: 'Outfit, Inter, system-ui, sans-serif',
-                size: 15,
+                size: 16,
                 color: theme === 'dark' ? '#cbd5e1' : '#334155'
               },
               marker: {

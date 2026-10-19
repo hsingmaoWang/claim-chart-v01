@@ -230,7 +230,7 @@ const HeatmapSettingsModal = ({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.25)',
+        backgroundColor: 'transparent',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -242,9 +242,9 @@ const HeatmapSettingsModal = ({
       {/* Outer frosted glass backdrop box ~5% larger with matching rounded corners */}
       <div
         style={{
-          padding: '16px',
+          padding: '8px',
           borderRadius: '24px',
-          backgroundColor: isDark ? 'rgba(30, 41, 59, 0.75)' : 'rgba(255, 255, 255, 0.65)',
+          backgroundColor: isDark ? 'rgba(98, 124, 166, 0.75)' : 'rgba(233, 233, 233, 0.65)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.8)'}`,
@@ -260,7 +260,7 @@ const HeatmapSettingsModal = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{
-          backgroundColor: isDark ? '#1e293b' : '#ffffff',
+          backgroundColor: isDark ? '#4a6a9eff' : '#ffffffff',
           border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'}`,
           borderRadius: '16px',
           width: '100%',
@@ -276,286 +276,256 @@ const HeatmapSettingsModal = ({
             padding: '20px 24px',
             borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
             background: isDark
-              ? 'linear-gradient(135deg, rgba(30, 41, 59, 1) 0%, rgba(15, 23, 42, 1) 100%)'
-              : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+              ? 'linear-gradient(135deg, #0d69c4ff 0%, rgba(15, 23, 42, 1) 100%)'
+              : 'linear-gradient(135deg, #c1defbff 0%, #f1f5f9 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between'
           }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 4px 12px rgba(14, 165, 233, 0.3)'
-            }}>
-              <Settings size={20} />
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: isDark ? '#ffffff' : '#0f172a' }}>
-                ⚙️ 熱圖與氣泡圖繪圖進階設定
-              </h3>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b' }}>
-                自訂 X / Y 軸分析維度、階層深度、Top-N 統計數量與全域資料篩選
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: isDark ? '#94a3b8' : '#64748b',
-              cursor: 'pointer',
-              padding: '6px',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <XIcon size={20} />
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-          {/* Preset Templates Section (4e) */}
-          <div style={{
-            padding: '14px 16px',
-            borderRadius: '12px',
-            background: isDark ? 'rgba(14, 165, 233, 0.08)' : 'rgba(14, 165, 233, 0.05)',
-            border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.25)' : 'rgba(14, 165, 233, 0.15)'}`
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-              <Sparkles size={16} color={isDark ? '#38bdf8' : '#0284c7'} />
-              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isDark ? '#7dd3fc' : '#0284c7' }}>
-                模板快捷選項 (Presets)
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={applyPresetKeyTechVsYear}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#ffffff',
-                  border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.4)' : 'rgba(2, 132, 199, 0.3)'}`,
-                  color: isDark ? '#e2e8f0' : '#1e293b',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <span>📅 關鍵技術 vs. 申請年</span>
-                <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>(X: 申請年 / Y: 前5大技術1階)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={applyPresetKeyTechVsCompany}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#ffffff',
-                  border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.4)' : 'rgba(147, 51, 234, 0.3)'}`,
-                  color: isDark ? '#e2e8f0' : '#1e293b',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <span>🏢 關鍵技術 vs. 公司</span>
-                <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>(X: 前10大技術1&gt;2階 / Y: 前10大公司)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Global Single-Item Filter Section (4a) */}
-          <div style={{
-            padding: '14px 16px',
-            borderRadius: '12px',
-            background: isDark ? 'rgba(15, 23, 42, 0.5)' : 'rgba(241, 245, 249, 0.8)',
-            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-              <Filter size={16} color={isDark ? '#a855f7' : '#9333ea'} />
-              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isDark ? '#e2e8f0' : '#1e293b' }}>
-                整體資料單一項目篩選器 (Single-Item Filter)
-              </span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}>
-                  選擇篩選欄位：
-                </label>
-                <select
-                  value={filterField || '__NONE__'}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setFilterField(val === '__NONE__' ? '' : val);
-                    setFilterValue('__ALL__');
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                    color: isDark ? '#f8fafc' : '#0f172a',
-                    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  <option value="__NONE__">不篩選 (包含全部資料)</option>
-                  {sanitizedAvailableFields.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.emoji} {f.label} {f.isExcel ? '(Excel擴充欄位)' : ''}
-                    </option>
-                  ))}
-                </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                boxShadow: '0 4px 12px rgba(14, 165, 233, 0.3)'
+              }}>
+                <Settings size={20} />
               </div>
-
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}>
-                  選擇篩選數值：
-                </label>
-                <select
-                  disabled={!filterField || filterField === '__NONE__'}
-                  value={filterValue}
-                  onChange={e => setFilterValue(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    backgroundColor: (!filterField || filterField === '__NONE__')
-                      ? (isDark ? '#1e293b' : '#f1f5f9')
-                      : (isDark ? '#0f172a' : '#ffffff'),
-                    color: isDark ? '#f8fafc' : '#0f172a',
-                    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
-                    fontSize: '0.85rem',
-                    opacity: (!filterField || filterField === '__NONE__') ? 0.5 : 1
-                  }}
-                >
-                  <option value="__ALL__">全部數值 (不限定單一項目)</option>
-                  {filterValueOptions.map(item => (
-                    <option key={item.value} value={item.value}>
-                      {item.value} ({item.count})
-                    </option>
-                  ))}
-                </select>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: isDark ? '#ffffff' : '#0f172a' }}>
+                  ⚙️ 熱圖與氣泡圖繪圖進階設定
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b' }}>
+                  自訂 X / Y 軸分析維度、階層深度、Top-N 統計數量與全域資料篩選
+                </p>
               </div>
             </div>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: isDark ? '#94a3b8' : '#64748b',
+                cursor: 'pointer',
+                padding: '6px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <XIcon size={20} />
+            </button>
           </div>
 
-          {/* X Axis and Y Axis Cards (4b, 4c, 4d) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          {/* Modal Body */}
+          <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-            {/* X Axis Config Card */}
+            {/* Preset Templates Section (4e) */}
             <div style={{
-              padding: '16px',
+              padding: '14px 16px',
               borderRadius: '12px',
-              background: isDark ? 'rgba(14, 165, 233, 0.05)' : 'rgba(14, 165, 233, 0.03)',
-              border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.3)' : 'rgba(14, 165, 233, 0.2)'}`
+              background: isDark ? 'rgba(14, 165, 233, 0.08)' : 'rgba(14, 165, 233, 0.05)',
+              border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.25)' : 'rgba(14, 165, 233, 0.15)'}`
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Layers size={16} color={isDark ? '#38bdf8' : '#0284c7'} />
-                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: isDark ? '#7dd3fc' : '#0284c7' }}>
-                    X 軸維度與數量設定
-                  </span>
-                </div>
-
-                {/* Level Toggle (4b) */}
-                <div style={{ display: 'flex', background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)', borderRadius: '6px', padding: '2px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setXAxisLevels(1)}
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: xAxisLevels === 1 ? '#0ea5e9' : 'transparent',
-                      color: xAxisLevels === 1 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
-                      cursor: 'pointer'
-                    }}
-                  >
-                    1階
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setXAxisLevels(2)}
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: xAxisLevels === 2 ? '#0ea5e9' : 'transparent',
-                      color: xAxisLevels === 2 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
-                      cursor: 'pointer'
-                    }}
-                  >
-                    2階
-                  </button>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <Sparkles size={16} color={isDark ? '#38bdf8' : '#0284c7'} />
+                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isDark ? '#7dd3fc' : '#0284c7' }}>
+                  模板快捷選項 (Presets)
+                </span>
               </div>
-
-              {/* X Field 1 (4c) */}
-              <div style={{ marginBottom: '10px' }}>
-                <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
-                  X 軸第 1 階項目：
-                </label>
-                <select
-                  value={xAxisField1}
-                  onChange={e => setXAxisField1(e.target.value)}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={applyPresetKeyTechVsYear}
                   style={{
-                    width: '100%',
-                    padding: '8px 10px',
+                    padding: '8px 14px',
                     borderRadius: '8px',
-                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                    color: isDark ? '#f8fafc' : '#0f172a',
-                    border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
-                    fontSize: '0.85rem'
+                    background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#ffffff',
+                    border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.4)' : 'rgba(2, 132, 199, 0.3)'}`,
+                    color: isDark ? '#e2e8f0' : '#1e293b',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  {sanitizedAvailableFields.map(f => {
-                    const disabledInY = isSelectedInY(f.id);
-                    return (
-                      <option key={f.id} value={f.id} disabled={disabledInY}>
-                        {f.emoji} {f.label} {disabledInY ? '(Y軸已選)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+                  <span>📅 關鍵技術 vs. 申請年</span>
+                  <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>(X: 申請年 / Y: 前5大技術1階)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={applyPresetKeyTechVsCompany}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#ffffff',
+                    border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.4)' : 'rgba(147, 51, 234, 0.3)'}`,
+                    color: isDark ? '#e2e8f0' : '#1e293b',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>🏢 關鍵技術 vs. 公司</span>
+                  <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>(X: 前10大技術1&gt;2階 / Y: 前10大公司)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Global Single-Item Filter Section (4a) */}
+            <div style={{
+              padding: '14px 16px',
+              borderRadius: '12px',
+              background: isDark ? 'rgba(15, 23, 42, 0.5)' : 'rgba(241, 245, 249, 0.8)',
+              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <Filter size={16} color={isDark ? '#a855f7' : '#9333ea'} />
+                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isDark ? '#e2e8f0' : '#1e293b' }}>
+                  整體資料單一項目篩選器 (Single-Item Filter)
+                </span>
               </div>
 
-              {/* X Field 2 (4c) */}
-              {xAxisLevels === 2 && (
-                <div style={{ marginBottom: '10px' }}>
-                  <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
-                    X 軸第 2 階項目：
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}>
+                    選擇篩選欄位：
                   </label>
                   <select
-                    value={xAxisField2}
-                    onChange={e => setXAxisField2(e.target.value)}
+                    value={filterField || '__NONE__'}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setFilterField(val === '__NONE__' ? '' : val);
+                      setFilterValue('__ALL__');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                      color: isDark ? '#f8fafc' : '#0f172a',
+                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <option value="__NONE__">不篩選 (包含全部資料)</option>
+                    {sanitizedAvailableFields.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {f.emoji} {f.label} {f.isExcel ? '(Excel擴充欄位)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}>
+                    選擇篩選數值：
+                  </label>
+                  <select
+                    disabled={!filterField || filterField === '__NONE__'}
+                    value={filterValue}
+                    onChange={e => setFilterValue(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: (!filterField || filterField === '__NONE__')
+                        ? (isDark ? '#1e293b' : '#f1f5f9')
+                        : (isDark ? '#0f172a' : '#ffffff'),
+                      color: isDark ? '#f8fafc' : '#0f172a',
+                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
+                      fontSize: '0.85rem',
+                      opacity: (!filterField || filterField === '__NONE__') ? 0.5 : 1
+                    }}
+                  >
+                    <option value="__ALL__">全部數值 (不限定單一項目)</option>
+                    {filterValueOptions.map(item => (
+                      <option key={item.value} value={item.value}>
+                        {item.value} ({item.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* X Axis and Y Axis Cards (4b, 4c, 4d) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+
+              {/* X Axis Config Card */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: isDark ? 'rgba(14, 165, 233, 0.05)' : 'rgba(14, 165, 233, 0.03)',
+                border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.3)' : 'rgba(14, 165, 233, 0.2)'}`
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Layers size={16} color={isDark ? '#38bdf8' : '#0284c7'} />
+                    <span style={{ fontSize: '0.92rem', fontWeight: 700, color: isDark ? '#7dd3fc' : '#0284c7' }}>
+                      X 軸維度與數量設定
+                    </span>
+                  </div>
+
+                  {/* Level Toggle (4b) */}
+                  <div style={{ display: 'flex', background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)', borderRadius: '6px', padding: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setXAxisLevels(1)}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: xAxisLevels === 1 ? '#0ea5e9' : 'transparent',
+                        color: xAxisLevels === 1 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
+                        cursor: 'pointer'
+                      }}
+                    >
+                      1階
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setXAxisLevels(2)}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: xAxisLevels === 2 ? '#0ea5e9' : 'transparent',
+                        color: xAxisLevels === 2 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
+                        cursor: 'pointer'
+                      }}
+                    >
+                      2階
+                    </button>
+                  </div>
+                </div>
+
+                {/* X Field 1 (4c) */}
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
+                    X 軸第 1 階項目：
+                  </label>
+                  <select
+                    value={xAxisField1}
+                    onChange={e => setXAxisField1(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
@@ -566,139 +536,139 @@ const HeatmapSettingsModal = ({
                       fontSize: '0.85rem'
                     }}
                   >
-                    <option value="">(請選擇第二階欄位)</option>
                     {sanitizedAvailableFields.map(f => {
                       const disabledInY = isSelectedInY(f.id);
-                      const isSameAsX1 = f.id === xAxisField1;
                       return (
-                        <option key={f.id} value={f.id} disabled={disabledInY || isSameAsX1}>
-                          {f.emoji} {f.label} {isSameAsX1 ? '(X軸1階已選)' : disabledInY ? '(Y軸已選)' : ''}
+                        <option key={f.id} value={f.id} disabled={disabledInY}>
+                          {f.emoji} {f.label} {disabledInY ? '(Y軸已選)' : ''}
                         </option>
                       );
                     })}
                   </select>
                 </div>
-              )}
 
-              {/* X Top-N Count (4d) */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
-                  X 軸呈現數量排序 (Top-N)：
-                </label>
-                <select
-                  value={xAxisTopN}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setXAxisTopN(val === 'all' ? 'all' : Number(val));
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                    color: isDark ? '#f8fafc' : '#0f172a',
-                    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  <option value={5}>i. 前 5 大專利件數項目</option>
-                  <option value={10}>ii. 前 10 大專利件數項目</option>
-                  <option value={20}>iii. 前 20 大專利件數項目</option>
-                  <option value="all">iv. 全部數目</option>
-                </select>
-              </div>
-            </div>
+                {/* X Field 2 (4c) */}
+                {xAxisLevels === 2 && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
+                      X 軸第 2 階項目：
+                    </label>
+                    <select
+                      value={xAxisField2}
+                      onChange={e => setXAxisField2(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                        color: isDark ? '#f8fafc' : '#0f172a',
+                        border: `1px solid ${isDark ? 'rgba(14, 165, 233, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <option value="">(請選擇第二階欄位)</option>
+                      {sanitizedAvailableFields.map(f => {
+                        const disabledInY = isSelectedInY(f.id);
+                        const isSameAsX1 = f.id === xAxisField1;
+                        return (
+                          <option key={f.id} value={f.id} disabled={disabledInY || isSameAsX1}>
+                            {f.emoji} {f.label} {isSameAsX1 ? '(X軸1階已選)' : disabledInY ? '(Y軸已選)' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
 
-            {/* Y Axis Config Card */}
-            <div style={{
-              padding: '16px',
-              borderRadius: '12px',
-              background: isDark ? 'rgba(168, 85, 247, 0.05)' : 'rgba(168, 85, 247, 0.03)',
-              border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.2)'}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Layers size={16} color={isDark ? '#c084fc' : '#9333ea'} />
-                  <span style={{ fontSize: '0.92rem', fontWeight: 700, color: isDark ? '#d8b4fe' : '#9333ea' }}>
-                    Y 軸維度與數量設定
-                  </span>
-                </div>
-
-                {/* Level Toggle (4b) */}
-                <div style={{ display: 'flex', background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)', borderRadius: '6px', padding: '2px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setYAxisLevels(1)}
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: yAxisLevels === 1 ? '#a855f7' : 'transparent',
-                      color: yAxisLevels === 1 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
-                      cursor: 'pointer'
-                    }}
-                  >
-                    1階
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setYAxisLevels(2)}
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      borderRadius: '4px',
-                      border: 'none',
-                      background: yAxisLevels === 2 ? '#a855f7' : 'transparent',
-                      color: yAxisLevels === 2 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
-                      cursor: 'pointer'
-                    }}
-                  >
-                    2階
-                  </button>
-                </div>
-              </div>
-
-              {/* Y Field 1 (4c) */}
-              <div style={{ marginBottom: '10px' }}>
-                <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
-                  Y 軸第 1 階項目：
-                </label>
-                <select
-                  value={yAxisField1}
-                  onChange={e => setYAxisField1(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                    color: isDark ? '#f8fafc' : '#0f172a',
-                    border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.4)' : 'rgba(168, 85, 247, 0.3)'}`,
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  {sanitizedAvailableFields.map(f => {
-                    const disabledInX = isSelectedInX(f.id);
-                    return (
-                      <option key={f.id} value={f.id} disabled={disabledInX}>
-                        {f.emoji} {f.label} {disabledInX ? '(X軸已選)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              {/* Y Field 2 (4c) */}
-              {yAxisLevels === 2 && (
-                <div style={{ marginBottom: '10px' }}>
+                {/* X Top-N Count (4d) */}
+                <div>
                   <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
-                    Y 軸第 2 階項目：
+                    X 軸呈現數量排序 (Top-N)：
                   </label>
                   <select
-                    value={yAxisField2}
-                    onChange={e => setYAxisField2(e.target.value)}
+                    value={xAxisTopN}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setXAxisTopN(val === 'all' ? 'all' : Number(val));
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                      color: isDark ? '#f8fafc' : '#0f172a',
+                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <option value={5}>i. 前 5 大專利件數項目</option>
+                    <option value={10}>ii. 前 10 大專利件數項目</option>
+                    <option value={20}>iii. 前 20 大專利件數項目</option>
+                    <option value="all">iv. 全部數目</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Y Axis Config Card */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: isDark ? 'rgba(168, 85, 247, 0.05)' : 'rgba(168, 85, 247, 0.03)',
+                border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.3)' : 'rgba(168, 85, 247, 0.2)'}`
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Layers size={16} color={isDark ? '#c084fc' : '#9333ea'} />
+                    <span style={{ fontSize: '0.92rem', fontWeight: 700, color: isDark ? '#d8b4fe' : '#9333ea' }}>
+                      Y 軸維度與數量設定
+                    </span>
+                  </div>
+
+                  {/* Level Toggle (4b) */}
+                  <div style={{ display: 'flex', background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.06)', borderRadius: '6px', padding: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setYAxisLevels(1)}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: yAxisLevels === 1 ? '#a855f7' : 'transparent',
+                        color: yAxisLevels === 1 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
+                        cursor: 'pointer'
+                      }}
+                    >
+                      1階
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setYAxisLevels(2)}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: yAxisLevels === 2 ? '#a855f7' : 'transparent',
+                        color: yAxisLevels === 2 ? '#fff' : (isDark ? '#94a3b8' : '#64748b'),
+                        cursor: 'pointer'
+                      }}
+                    >
+                      2階
+                    </button>
+                  </div>
+                </div>
+
+                {/* Y Field 1 (4c) */}
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
+                    Y 軸第 1 階項目：
+                  </label>
+                  <select
+                    value={yAxisField1}
+                    onChange={e => setYAxisField1(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
@@ -709,105 +679,137 @@ const HeatmapSettingsModal = ({
                       fontSize: '0.85rem'
                     }}
                   >
-                    <option value="">(請選擇第二階欄位)</option>
                     {sanitizedAvailableFields.map(f => {
                       const disabledInX = isSelectedInX(f.id);
-                      const isSameAsY1 = f.id === yAxisField1;
                       return (
-                        <option key={f.id} value={f.id} disabled={disabledInX || isSameAsY1}>
-                          {f.emoji} {f.label} {isSameAsY1 ? '(Y軸1階已選)' : disabledInX ? '(X軸已選)' : ''}
+                        <option key={f.id} value={f.id} disabled={disabledInX}>
+                          {f.emoji} {f.label} {disabledInX ? '(X軸已選)' : ''}
                         </option>
                       );
                     })}
                   </select>
                 </div>
-              )}
 
-              {/* Y Top-N Count (4d) */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
-                  Y 軸呈現數量排序 (Top-N)：
-                </label>
-                <select
-                  value={yAxisTopN}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setYAxisTopN(val === 'all' ? 'all' : Number(val));
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                    color: isDark ? '#f8fafc' : '#0f172a',
-                    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  <option value={5}>i. 前 5 大專利件數項目</option>
-                  <option value={10}>ii. 前 10 大專利件數項目</option>
-                  <option value={20}>iii. 前 20 大專利件數項目</option>
-                  <option value="all">iv. 全部數目</option>
-                </select>
+                {/* Y Field 2 (4c) */}
+                {yAxisLevels === 2 && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
+                      Y 軸第 2 階項目：
+                    </label>
+                    <select
+                      value={yAxisField2}
+                      onChange={e => setYAxisField2(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                        color: isDark ? '#f8fafc' : '#0f172a',
+                        border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.4)' : 'rgba(168, 85, 247, 0.3)'}`,
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <option value="">(請選擇第二階欄位)</option>
+                      {sanitizedAvailableFields.map(f => {
+                        const disabledInX = isSelectedInX(f.id);
+                        const isSameAsY1 = f.id === yAxisField1;
+                        return (
+                          <option key={f.id} value={f.id} disabled={disabledInX || isSameAsY1}>
+                            {f.emoji} {f.label} {isSameAsY1 ? '(Y軸1階已選)' : disabledInX ? '(X軸已選)' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
+                {/* Y Top-N Count (4d) */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '3px' }}>
+                    Y 軸呈現數量排序 (Top-N)：
+                  </label>
+                  <select
+                    value={yAxisTopN}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setYAxisTopN(val === 'all' ? 'all' : Number(val));
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                      color: isDark ? '#f8fafc' : '#0f172a',
+                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <option value={5}>i. 前 5 大專利件數項目</option>
+                    <option value={10}>ii. 前 10 大專利件數項目</option>
+                    <option value={20}>iii. 前 20 大專利件數項目</option>
+                    <option value="all">iv. 全部數目</option>
+                  </select>
+                </div>
               </div>
+
             </div>
 
           </div>
 
-        </div>
-
-        {/* Modal Footer (4f) */}
-        <div style={{
-          padding: '16px 24px',
-          borderTop: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
-          backgroundColor: isDark ? 'rgba(15, 23, 42, 0.8)' : 'rgba(248, 250, 252, 0.9)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: '12px'
-        }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '8px 18px',
-              borderRadius: '8px',
-              backgroundColor: 'transparent',
-              color: isDark ? '#94a3b8' : '#64748b',
-              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
-              fontSize: '0.85rem',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 20px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-              color: '#ffffff',
-              border: 'none',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(14, 165, 233, 0.3)'
-            }}
-          >
-            <Check size={16} />
-            <span>確定並套用繪圖</span>
-          </button>
+          {/* Modal Footer (4f) */}
+          <div style={{
+            padding: '16px 24px',
+            borderTop: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'}`,
+            background: isDark
+              ? 'linear-gradient(135deg, rgba(15, 23, 42, 1) 0%, #0d69c4ff 100%)'
+              : 'linear-gradient(135deg, #f1f5f9 0%, #c1defbff 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '12px'
+          }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '8px',
+                backgroundColor: 'transparent',
+                color: isDark ? '#94a3b8' : '#64748b',
+                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 20px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(14, 165, 233, 0.3)'
+              }}
+            >
+              <Check size={16} />
+              <span>確定並套用繪圖</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
 };
 
 export default HeatmapSettingsModal;

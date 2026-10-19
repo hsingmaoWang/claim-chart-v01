@@ -254,19 +254,19 @@ function App() {
         position: 'fixed', top: 0, right: 0, zIndex: 200,
         display: 'flex', alignItems: 'center', gap: '0.75rem',
         padding: '0.7rem 1.25rem',
-        background: 'rgba(6,11,40,0.55)',
+        background: 'rgba(167, 215, 250, 0.91)',
         backdropFilter: 'blur(12px)',
         borderBottomLeftRadius: '1rem',
         border: '1px solid rgba(255,255,255,0.12)',
         borderTop: 'none', borderRight: 'none',
       }}>
-        <div style={{ fontSize: '0.8rem', color: 'rgba(186,230,253,0.8)', fontWeight: 500 }}>
+        <div style={{ fontSize: '0.8rem', color: 'rgba(0, 0, 0, 0.8)', fontWeight: 500 }}>
           <span style={{ marginRight: '0.4rem', opacity: 0.6 }}>登入者：</span>
-          <strong style={{ color: 'white' }}>{authState.username}</strong>
+          <strong style={{ color: 'rgba(5, 100, 253, 0.8)' }}>{authState.username}</strong>
           {isAdmin && (
             <span style={{
               marginLeft: '0.5rem', fontSize: '0.65rem', background: 'rgba(139,92,246,0.3)',
-              border: '1px solid rgba(139,92,246,0.5)', color: '#c4b5fd',
+              border: '1px solid rgba(139,92,246,0.5)', color: '#ffffffff',
               padding: '0.1rem 0.5rem', borderRadius: '999px', fontWeight: 700,
             }}>Admin</span>
           )}
@@ -280,8 +280,8 @@ function App() {
           style={{
             display: 'flex', alignItems: 'center', gap: '0.4rem',
             padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
-            background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.3)',
-            color: '#67e8f9', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            background: 'rgba(72, 187, 204, 1)', border: '1px solid rgba(70, 206, 226, 0.3)',
+            color: '#ffffffff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
             transition: 'all 200ms',
           }}
         >
@@ -301,7 +301,7 @@ function App() {
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
                 background: 'rgba(139,92,246,0.25)', border: '1px solid rgba(139,92,246,0.45)',
-                color: '#c4b5fd', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                color: '#ffffffff', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
                 transition: 'all 200ms',
               }}
             >
@@ -321,7 +321,7 @@ function App() {
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
                 background: 'rgba(8, 145, 178, 0.25)', border: '1px solid rgba(34, 211, 238, 0.45)',
-                color: '#67e8f9', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                color: '#ffffffff', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
                 transition: 'all 200ms',
               }}
             >
@@ -341,8 +341,8 @@ function App() {
           style={{
             display: 'flex', alignItems: 'center', gap: '0.4rem',
             padding: '0.4rem 0.85rem', borderRadius: '0.5rem',
-            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-            color: 'rgba(186,230,253,0.8)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            background: 'rgba(68, 178, 247, 1)', border: '1px solid rgba(255,255,255,0.18)',
+            color: 'rgba(222, 239, 249, 0.8)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
             transition: 'all 200ms',
           }}
         >
@@ -401,12 +401,12 @@ function App() {
         onMouseDown={handleMouseDown}
         style={{
           position: 'fixed',
-          left: `calc(1rem + ${position.x}px)`,
+          left: `calc(2.5rem + ${position.x}px)`,
           top: `calc(50% + ${position.y}px)`,
           transform: 'translateY(-50%)',
           display: 'flex', flexDirection: 'column', gap: '1rem',
           padding: '1rem', zIndex: 100,
-          background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+          background: 'rgba(167, 215, 250, 0.91)', backdropFilter: 'blur(10px)',
           borderRadius: '1rem', border: '1px solid var(--color-border)',
           cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none',
         }}

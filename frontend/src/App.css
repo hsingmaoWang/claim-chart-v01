@@ -21,7 +21,7 @@
 
 .badge {
   display: inline-block;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(196, 250, 247, 0.4);
   color: var(--color-primary);
   padding: 0.35rem 1rem;
   border-radius: var(--radius-md);
@@ -34,20 +34,19 @@
   letter-spacing: 0.1em;
 }
 
-.hero h1, .hero h1.title-claimchart {
+.hero h1,
+.hero h1.title-claimchart {
   font-size: 4.5rem;
   margin-bottom: 1.25rem;
   font-weight: 900;
   /* Royal / Electric Blue (靚藍) Glossy Gradient */
-  background: linear-gradient(
-    110deg,
-    #1e40af 0%,
-    #3b82f6 25%,
-    #ffffff 45%,
-    #ffffff 55%,
-    #3b82f6 75%,
-    #1e40af 100%
-  );
+  background: linear-gradient(110deg,
+      #1e40af 0%,
+      #3b82f6 25%,
+      #2dd4bf 45%,
+      #ffffff 55%,
+      #3b82f6 75%,
+      #1e40af 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
@@ -59,15 +58,13 @@
 }
 
 .hero h1.title-mindmap {
-  background: linear-gradient(
-    110deg,
-    #0f766e 0%,
-    #2dd4bf 25%,
-    #ffffff 45%,
-    #ffffff 55%,
-    #2dd4bf 75%,
-    #0f766e 100%
-  );
+  background: linear-gradient(110deg,
+      #0f766e 0%,
+      #2dd4bf 25%,
+      #3b82f6 45%,
+      #ffffff 55%,
+      #2dd4bf 75%,
+      #0f766e 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
@@ -76,7 +73,9 @@
 }
 
 @keyframes shine {
-  to { background-position: -200% center; }
+  to {
+    background-position: -200% center;
+  }
 }
 
 .hero p {
@@ -97,7 +96,8 @@
 }
 
 /* Buttons (Elegant Teal Style) */
-.btn-primary, .btn-secondary {
+.btn-primary,
+.btn-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -143,10 +143,13 @@
 }
 
 /* Glassmorphism Cyber Panels */
-.input-section, .loader-container, .result-card, .error-card {
+.input-section,
+.loader-container,
+.result-card,
+.error-card {
   width: 100%;
   max-width: 600px;
-  background-color: var(--color-surface);
+  background-color: rgba(176, 231, 248, 0.764);
   -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
   border-radius: var(--radius-lg);
@@ -159,10 +162,14 @@
 }
 
 /* Card highlight */
-.input-section::before, .result-card::before, .loader-container::before {
+.input-section::before,
+.result-card::before,
+.loader-container::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 4px;
   background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
   opacity: 0.6;
@@ -175,14 +182,15 @@
   padding: 3.5rem 2rem;
   text-align: center;
   transition: all var(--transition-normal);
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(228, 251, 250, 0.995);
   cursor: pointer;
   position: relative;
 }
 
-.upload-zone:hover, .upload-zone.dragging {
+.upload-zone:hover,
+.upload-zone.dragging {
   border-color: var(--color-primary);
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgb(172, 227, 229);
 }
 
 .upload-icon {
@@ -217,7 +225,8 @@
   text-align: center;
 }
 
-.divider::before, .divider::after {
+.divider::before,
+.divider::after {
   content: '';
   flex: 1;
   border-bottom: 1px solid var(--color-border);
@@ -367,4 +376,3 @@ body.downloading-excel *,
 body.downloading-excel *:hover {
   cursor: wait !important;
 }
-
