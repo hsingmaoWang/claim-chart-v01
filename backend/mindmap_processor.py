@@ -22,6 +22,7 @@ if parent_dir not in sys.path:
 
 import analyzer
 import extractor
+import patent_processor
 get_genai_client = analyzer.get_genai_client
 extract_pdf_content = extractor.extract_pdf_content
 configure_response_format = analyzer.configure_response_format
@@ -1224,18 +1225,28 @@ async def preview_excel_columns(file: UploadFile = File(...)):
         if df.empty:
             raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
 
-        column_info = classify_excel_columns(df)
+        # 依據 patent-list-processing Skill 進行專利公開公告合併與專利家族計數
+        df_processed, patent_processing_info = patent_processor.process_patent_dataframe_with_skill(df)
+
+        # 若進行了公開公告合併且有去重，將合併後之 DataFrame 回寫覆蓋暫存檔案，確保後續預處理與分析基於合併後之資料集
+        if patent_processing_info.get("pub_merge_performed") and patent_processing_info.get("dedup_count", 0) > 0:
+            df_processed.to_excel(file_path, index=False)
+
+        column_info = classify_excel_columns(df_processed)
         column_info["file_id"] = file_id
         column_info["filename"] = file.filename
+        column_info["patent_processing"] = patent_processing_info
         
         # 暫存已上傳檔案路徑，後續 preprocess 可重用
         temp_storage[file_id] = {
             "file_path": file_path,
             "filename": file.filename,
-            "df_raw": df
+            "df_raw": df,
+            "df_processed": df_processed,
+            "patent_processing": patent_processing_info
         }
         
-        return column_info
+        return patent_processor.to_native_types(column_info)
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -1270,6 +1281,15 @@ async def preprocess_patent_file(
             with open(file_path, "wb") as buffer:
                 buffer.write(await file.read())
             filename = file.filename
+
+            # 若直接上傳未經過 preview，同樣套用 patent-list-processing skill 合併
+            try:
+                df_direct = extract_patents_from_excel(file_path)
+                df_direct_processed, direct_proc_info = patent_processor.process_patent_dataframe_with_skill(df_direct)
+                if direct_proc_info.get("pub_merge_performed") and direct_proc_info.get("dedup_count", 0) > 0:
+                    df_direct_processed.to_excel(file_path, index=False)
+            except Exception as e_proc:
+                logger.warning(f"Direct upload patent processing warning: {e_proc}")
         else:
             raise HTTPException(status_code=400, detail="請上傳 Excel 檔案或提供有效的 file_id")
 
@@ -1290,14 +1310,14 @@ async def preprocess_patent_file(
                 logger.warning(f"Failed to log uploaded file: {e}")
             
         # 1. 偵測是否可直接 Bypass AI 分析流程
-        is_bypass, final_result = detect_and_parse_bypass_excel(file_path, file.filename, file_id)
+        is_bypass, final_result = detect_and_parse_bypass_excel(file_path, filename, file_id)
         if is_bypass:
             logger.info("偵測到已分析之 Excel 檔案，啟動直接生成分類心智圖 (Bypass) 流程。")
             df_patents = pd.DataFrame(final_result["patents"])
             temp_storage[file_id] = {
                 "df": df_patents,
                 "text": df_to_ai_content(df_patents),
-                "filename": file.filename,
+                "filename": filename,
                 "file_path_preprocessed": file_path,
                 "stage1_taxonomy": final_result["stage1_taxonomy"],
                 "stage2_result": final_result,
@@ -1359,7 +1379,7 @@ async def preprocess_patent_file(
             task_id,
             file_id,
             file_path,
-            file.filename,
+            filename,
             enable_screening,
             screening_criteria,
             parsed_selected_cols

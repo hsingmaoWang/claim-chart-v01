@@ -385,12 +385,12 @@ function App() {
         <div className="hero-content animate-fade-in">
           <div className="badge">AI Powered</div>
           <h1 className={activeTab === 'mindMap' ? 'title-mindmap' : 'title-claimchart'}>
-            {activeTab === 'claimChart' ? 'Patent Claim Chart Generator' : 'Patent Mind Map Generator'}
+            {activeTab === 'claimChart' ? 'Patent Claim Chart Generator' : 'Patent Map Analyzer'}
           </h1>
           <p>
             {activeTab === 'claimChart'
               ? 'Instantly transform patent documents into presentation-ready claim charts. Upload a PDF or paste a Google Patents URL to begin.'
-              : 'AI analyzes patent categories and automatically generates an interactive Patent Mind Map. Upload a patent portfolio Excel file or PDF file to start the analysis.'}
+              : 'AI analyzes patent categories and automatically generates several interactive Patent Maps and charts. Upload a patent portfolio Excel file to start the analysis.'}
           </p>
         </div>
       </header>

@@ -766,6 +766,32 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     return s;
   }, []);
 
+  // Wrap label into 2 lines/columns when character count exceeds threshold (default 8)
+  const wrapLabel = useCallback((text, threshold = 8) => {
+    if (!text || typeof text !== 'string') return text || '';
+    if (text.includes('\n') || text.includes('<br>')) return text;
+    if (text.length <= threshold) return text;
+
+    const mid = 8;
+    const delimiters = [' ', '、', '/', '-', '_', ':', '：', '(', '（'];
+
+    for (let offset = 0; offset <= 2; offset++) {
+      for (const sign of [-1, 1]) {
+        const idx = mid + (offset * sign);
+        if (idx > 1 && idx < text.length - 1 && delimiters.includes(text[idx])) {
+          if (text[idx] === ' ') {
+            return `${text.slice(0, idx).trim()}<br>${text.slice(idx + 1).trim()}`;
+          }
+          if (text[idx] === '(' || text[idx] === '（') {
+            return `${text.slice(0, idx).trim()}<br>${text.slice(idx).trim()}`;
+          }
+          return `${text.slice(0, idx + 1)}<br>${text.slice(idx + 1).trim()}`;
+        }
+      }
+    }
+    return `${text.slice(0, mid)}<br>${text.slice(mid)}`;
+  }, []);
+
   const isX2Level = xAxisDims.length === 2;
   const xParsed = useMemo(() => {
     if (!matrixData?.x) return [];
@@ -781,10 +807,10 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const xTickText = useMemo(() => {
     if (!matrixData?.x) return [];
     if (!isX2Level) {
-      return matrixData.x.map(label => cleanLabelText(label.replace(/ > /g, '\n')));
+      return matrixData.x.map(label => wrapLabel(cleanLabelText(label.replace(/ > /g, '<br>'))));
     }
-    return xParsed.map(item => cleanLabelText(item.child));
-  }, [matrixData?.x, isX2Level, xParsed, cleanLabelText]);
+    return xParsed.map(item => wrapLabel(cleanLabelText(item.child)));
+  }, [matrixData?.x, isX2Level, xParsed, cleanLabelText, wrapLabel]);
 
   const { xLevel1Annotations, xSeparatorShapes } = useMemo(() => {
     if (!isX2Level || !xParsed.length) {
@@ -813,7 +839,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         y: -0.22,
         xref: 'x',
         yref: 'paper',
-        text: cleanLabelText(g.parent),
+        text: wrapLabel(cleanLabelText(g.parent)),
         showarrow: false,
         xanchor: 'center',
         yanchor: 'top',
@@ -845,7 +871,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     });
 
     return { xLevel1Annotations: annotations, xSeparatorShapes: shapes };
-  }, [isX2Level, xParsed, matrixData?.x, theme, cleanLabelText]);
+  }, [isX2Level, xParsed, matrixData?.x, theme, cleanLabelText, wrapLabel]);
 
   const isY2Level = yAxisDims.length === 2;
   const yParsed = useMemo(() => {
@@ -862,10 +888,10 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const yTickText = useMemo(() => {
     if (!matrixData?.y) return [];
     if (!isY2Level) {
-      return matrixData.y.map(label => cleanLabelText(label));
+      return matrixData.y.map(label => wrapLabel(cleanLabelText(label)));
     }
-    return yParsed.map(item => cleanLabelText(item.child));
-  }, [matrixData?.y, isY2Level, yParsed, cleanLabelText]);
+    return yParsed.map(item => wrapLabel(cleanLabelText(item.child)));
+  }, [matrixData?.y, isY2Level, yParsed, cleanLabelText, wrapLabel]);
 
   const { yLevel1Annotations, ySeparatorShapes } = useMemo(() => {
     if (!isY2Level || !yParsed.length) {
@@ -890,13 +916,13 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     groups.forEach((g, gIdx) => {
       const midY = (g.startIdx + g.endIdx) / 2;
       annotations.push({
-        x: -0.15,
+        x: -0.25,
         y: matrixData.y[Math.round(midY)] !== undefined ? (g.startIdx === g.endIdx ? matrixData.y[g.startIdx] : midY) : midY,
         xref: 'paper',
         yref: 'y',
-        text: cleanLabelText(g.parent),
+        text: wrapLabel(cleanLabelText(g.parent)),
         showarrow: false,
-        xanchor: 'right',
+        xanchor: 'left',
         yanchor: 'middle',
         font: {
           family: 'Outfit, Inter, system-ui, sans-serif',
@@ -926,7 +952,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     });
 
     return { yLevel1Annotations: annotations, ySeparatorShapes: shapes };
-  }, [isY2Level, yParsed, matrixData?.y, theme, cleanLabelText]);
+  }, [isY2Level, yParsed, matrixData?.y, theme, cleanLabelText, wrapLabel]);
 
   // DnD handlers
   const handleDragStart = useCallback((event) => {

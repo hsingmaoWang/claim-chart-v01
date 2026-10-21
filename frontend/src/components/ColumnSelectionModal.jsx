@@ -9,7 +9,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
     required_columns = [],
     selectable_columns = [],
     recommended_columns = [],
-    ai_generated_columns = []
+    ai_generated_columns = [],
+    patent_processing = null
   } = columnData;
 
   // State for user checked selectable columns
@@ -129,6 +130,106 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
             <p style={{ margin: '6px 0 0 0', fontSize: '0.875rem', color: '#111a276e' }}>
               檔案：<span style={{ color: '#cbd5e1', fontWeight: 500 }}>{filename}</span>
             </p>
+
+            {/* 依據 patent-list-processing Skill 顯示自動處理項目與計數結果 */}
+            {patent_processing && (
+              <div style={{
+                marginTop: '10px',
+                width: '90%',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(67, 106, 164, 0.45)',
+                border: '1px solid rgba(255, 255, 255, 0.22)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+              }}>
+                {/* 第一列：統計計數結果徽章 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    color: '#93c5fd',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    計數結果：
+                  </span>
+                  <span style={{
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    color: '#ffffff',
+                    backgroundColor: 'rgba(59, 130, 246, 0.35)',
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(147, 197, 253, 0.5)',
+                    letterSpacing: '0.3px'
+                  }}>
+                    {patent_processing.family_cases != null
+                      ? `${patent_processing.family_cases.toLocaleString()} 案 / ${patent_processing.family_pieces.toLocaleString()} 件`
+                      : `${patent_processing.merged_count.toLocaleString()} 件`}
+                  </span>
+                  <span style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
+                    {patent_processing.pub_merge_performed && patent_processing.dedup_count > 0
+                      ? `(原始 ${patent_processing.raw_count.toLocaleString()} 件，公開公告合併去重 ${patent_processing.dedup_count.toLocaleString()} 件)`
+                      : `(原始共 ${patent_processing.raw_count.toLocaleString()} 件)`}
+                  </span>
+                </div>
+
+                {/* 第二列：已進行處理項目 與 未進行處理項目 (缺少欄位說明) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+                  {/* 已進行處理項目 */}
+                  {patent_processing.processed_items && patent_processing.processed_items.map((item, idx) => (
+                    <div key={`proc-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', color: '#f1f5f9' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(34, 197, 94, 0.3)',
+                        color: '#4ade80',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        flexShrink: 0,
+                        marginTop: '1px'
+                      }}>✓</span>
+                      <span>
+                        <strong style={{ color: '#86efac', marginRight: '6px' }}>[已完成]</strong>
+                        {item.message}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* 未進行處理項目 (缺少相關欄位資訊) */}
+                  {patent_processing.unprocessed_items && patent_processing.unprocessed_items.map((item, idx) => (
+                    <div key={`unproc-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', color: '#fef3c7' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(245, 158, 11, 0.3)',
+                        color: '#fbbf24',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        flexShrink: 0,
+                        marginTop: '1px'
+                      }}>!</span>
+                      <span>
+                        <strong style={{ color: '#fcd34d', marginRight: '6px' }}>[未進行]</strong>
+                        {item.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

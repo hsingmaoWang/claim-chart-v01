@@ -883,7 +883,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               textAlign: 'center',
               padding: '4rem 2rem',
               borderRadius: '1.5rem',
-              border: isDragging ? '2px dashed var(--color-primary)' : '2px dashed rgba(8, 145, 178, 0.2)',
+              border: isDragging ? '15px solid var(--color-primary)' : '15px solid rgba(142, 210, 227, 0.6)',
               background: isDragging ? 'rgb(172, 227, 229)' : 'rgba(228, 251, 250, 0.995)',
               transition: 'all 0.3s ease',
               cursor: 'pointer'
@@ -1523,23 +1523,23 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(44, 139, 255, 0.7), rgba(86, 221, 251, 0.7))', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <label>應用領域:</label>
-                <input name="app_area_count" value={config.app_area_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+                <input name="app_area_count" value={config.app_area_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <label>技術1階:</label>
-                <input name="tech1_count" value={config.tech1_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+                <input name="tech1_count" value={config.tech1_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <label>技術2階:</label>
-                <input name="tech2_count" value={config.tech2_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+                <input name="tech2_count" value={config.tech2_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <label>技術3階:</label>
-                <input name="tech3_count" value={config.tech3_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+                <input name="tech3_count" value={config.tech3_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <label>功效節點:</label>
-                <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem' }} />
+                <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
               </div>
               <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(163, 241, 255, 1)', cursor: 'pointer' }}>重新分類</button>
 
