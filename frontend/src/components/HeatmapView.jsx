@@ -767,12 +767,12 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   }, []);
 
   // Wrap label into 2 lines/columns when character count exceeds threshold (default 8)
-  const wrapLabel = useCallback((text, threshold = 8) => {
+  const wrapLabel = useCallback((text, threshold = 7) => {
     if (!text || typeof text !== 'string') return text || '';
     if (text.includes('\n') || text.includes('<br>')) return text;
     if (text.length <= threshold) return text;
 
-    const mid = 8;
+    const mid = 7;
     const delimiters = [' ', '、', '/', '-', '_', ':', '：', '(', '（'];
 
     for (let offset = 0; offset <= 2; offset++) {
@@ -836,7 +836,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
       const midX = (g.startIdx + g.endIdx) / 2;
       annotations.push({
         x: matrixData.x[Math.round(midX)] !== undefined ? (g.startIdx === g.endIdx ? matrixData.x[g.startIdx] : midX) : midX,
-        y: -0.22,
+        y: -0.25,
         xref: 'x',
         yref: 'paper',
         text: wrapLabel(cleanLabelText(g.parent)),

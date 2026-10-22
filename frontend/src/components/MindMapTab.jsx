@@ -1,21 +1,27 @@
 import React, { useState, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import Loader from './Loader';
 import MindMapTree from './MindMapTree';
 import ColumnSelectionModal from './ColumnSelectionModal';
-import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X } from 'lucide-react';
+import ClassificationSettingsModal from './ClassificationSettingsModal';
+import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
 const SunburstView = lazy(() => import('./SunburstView'));
+const LifeCycleChart = lazy(() => import('./LifeCycleChart'));
 
 const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
-  const [viewMode, setViewMode] = useState('tree'); // 'tree' or 'heatmap'
+  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', or 'lifecycle'
   const [hierarchyType, setHierarchyType] = useState('mindmap'); // 'mindmap' or 'sunburst'
   const [showOtherCategories, setShowOtherCategories] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [fileInfo, setFileInfo] = useState(null);
   const [treeData, setTreeData] = useState(null);
   const [loaderMessage, setLoaderMessage] = useState('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
+
+  // Classification Settings Modal State
+  const [isClassificationModalOpen, setIsClassificationModalOpen] = useState(false);
 
   // Column Selection Modal States
   const [columnModalData, setColumnModalData] = useState(null);
@@ -386,8 +392,9 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     }
   };
 
-  const handleReprocess = async () => {
+  const handleReprocess = async (overrideConfig = null) => {
     if (!fileInfo) return;
+    const activeConfig = overrideConfig || config;
     setAppState('processing');
     setLoaderMessage('AI is analyzing and modeling patent taxonomy tree (Stage 1)...');
     setErrorMessage('');
@@ -396,7 +403,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       const response = await fetch('/api/mindmap/reprocess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
-        body: JSON.stringify({ ...config, file_id: fileInfo.file_id })
+        body: JSON.stringify({ ...activeConfig, file_id: fileInfo.file_id })
       });
 
       if (!response.ok) {
@@ -430,6 +437,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       setErrorMessage(err.message || 'Error occurred during reprocessing.');
       setAppState('tree');
     }
+  };
+
+  const handleConfirmClassificationSettings = (newConfig) => {
+    setConfig(newConfig);
+    setIsClassificationModalOpen(false);
+    handleReprocess(newConfig);
   };
 
   const handleGenerateStage2 = async () => {
@@ -1520,31 +1533,55 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
         appState === 'tree' && treeData && (
           <div className="mindmap-workspace" style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem', height: '100%', minWidth: '70vw', width: '100%', margin: '0 auto', transform: 'translateX(120px)' }}>
 
-            <div className="mindmap-controls glass-panel" style={{ padding: '1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(44, 139, 255, 0.7), rgba(86, 221, 251, 0.7))', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <label>應用領域:</label>
-                <input name="app_area_count" value={config.app_area_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <label>技術1階:</label>
-                <input name="tech1_count" value={config.tech1_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <label>技術2階:</label>
-                <input name="tech2_count" value={config.tech2_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <label>技術3階:</label>
-                <input name="tech3_count" value={config.tech3_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <label>功效節點:</label>
-                <input name="efficacy_count" value={config.efficacy_count} onChange={handleConfigChange} style={{ width: '60px', padding: '0.25rem', border: '1px solid var(--color-border)' }} />
-              </div>
-              <button onClick={handleReprocess} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: '0.5rem', background: 'rgba(163, 241, 255, 1)', cursor: 'pointer' }}>重新分類</button>
+            <div className="mindmap-controls glass-panel" style={{ padding: '0.75rem 1rem', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'linear-gradient(135deg, rgba(44, 139, 255, 0.7), rgba(86, 221, 251, 0.7))', display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Requirement 1: Gear button moved to the far left to open settings modal */}
+              <button
+                onClick={() => setIsClassificationModalOpen(true)}
+                className="btn-secondary"
+                style={{
+                  padding: '0.45rem 1rem',
+                  borderRadius: '0.5rem',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  color: '#0369a1',
+                  border: '1px solid rgba(14, 165, 233, 0.4)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.95)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+              >
+                <Settings size={15} />
+                重新分類設定
+              </button>
 
-              {/* Primary Segmented View Mode Toggle */}
+              {/* Primary Segmented View Mode Toggle: LifeCycle (Left) -> Tree -> Heatmap */}
               <div style={{ display: 'inline-flex', background: 'rgba(126, 190, 250, 0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem', gap: '0.5rem' }}>
+                <button
+                  onClick={() => setViewMode('lifecycle')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: '0.4rem',
+                    background: viewMode === 'lifecycle' ? 'rgba(82, 152, 245, 1)' : 'rgba(144, 212, 226, 1)',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <TrendingUp size={14} />
+                  技術生命週期圖
+                </button>
                 <button
                   onClick={() => setViewMode('tree')}
                   style={{
@@ -1586,7 +1623,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               </div>
             </div>
 
-            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: 'hidden', minHeight: '600px' }}>
+            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: viewMode === 'lifecycle' ? 'visible' : 'hidden', minHeight: viewMode === 'lifecycle' ? '880px' : '600px' }}>
               {/* Requirement 1: Segmented control for Mindmap vs Sunburst inside graph area upper right */}
               {viewMode === 'tree' && (
                 <div style={{
@@ -1668,32 +1705,49 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                 </Suspense>
               </div>
 
-              {/* Start New Button - Bottom Left of the result panel */}
-              <button
-                onClick={handleStartNew}
-                className="btn-secondary"
-                style={{
-                  position: 'absolute',
-                  bottom: '20px',
-                  left: '20px',
-                  zIndex: 20,
-                  padding: '0.6rem 1.2rem',
-                  borderRadius: '0.5rem',
-                  background: 'var(--color-primary)',
-                  border: '1px solid var(--color-border)',
-                  color: 'white',
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(10px)',
-                  fontWeight: 'bold',
-                  boxShadow: '0 4px 15px var(--color-primary-glow)',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseOver={(e) => e.target.style.background = 'var(--color-primary-hover)'}
-                onMouseOut={(e) => e.target.style.background = 'var(--color-primary)'}
-              >
-                Start New
-              </button>
+              <div style={{ display: viewMode === 'lifecycle' ? 'block' : 'none', width: '100%', height: '100%' }}>
+                <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入技術生命週期圖...</div>}>
+                  <LifeCycleChart treeData={treeData} onCaptureReady={viewMode === 'lifecycle' ? setCaptureImage : undefined} authState={authState} />
+                </Suspense>
+              </div>
             </div>
+
+            {/* Requirement 1: Unified Start New Button adjacent left to top right user info block */}
+            {typeof document !== 'undefined' && document.getElementById('top-bar-actions') && createPortal(
+              <button
+                id="mindmap-start-new-btn"
+                onClick={handleStartNew}
+                title="開始新分析 / 重新上傳"
+                style={{
+                  padding: '0.7rem 1.3rem',
+                  borderRadius: '0.5rem',
+                  background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.95), rgba(14, 165, 233, 0.95))',
+                  border: '1px solid rgba(255, 255, 255, 0.35)',
+                  color: '#ffffff',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(14, 165, 233, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.2rem',
+                  transition: 'all 0.2s ease',
+                  backdropFilter: 'blur(8px)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(14, 165, 233, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.35)';
+                }}
+              >
+                <RotateCcw size={14} />
+                Start New
+              </button>,
+              document.getElementById('top-bar-actions')
+            )}
           </div>
         )
       }
@@ -1962,6 +2016,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
         onClose={() => setIsColumnModalOpen(false)}
         onConfirm={handleConfirmColumnSelection}
         columnData={columnModalData}
+      />
+      <ClassificationSettingsModal
+        isOpen={isClassificationModalOpen}
+        onClose={() => setIsClassificationModalOpen(false)}
+        onConfirm={handleConfirmClassificationSettings}
+        currentConfig={config}
       />
     </div >
   );

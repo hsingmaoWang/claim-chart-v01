@@ -249,17 +249,26 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Top bar with user info and admin entry */}
+      {/* Top bar wrapper holding external action buttons and user info box */}
       <div style={{
         position: 'fixed', top: 0, right: 0, zIndex: 200,
         display: 'flex', alignItems: 'center', gap: '0.75rem',
-        padding: '0.7rem 1.25rem',
-        background: 'rgba(167, 215, 250, 0.91)',
-        backdropFilter: 'blur(12px)',
-        borderBottomLeftRadius: '1rem',
-        border: '1px solid rgba(255,255,255,0.12)',
-        borderTop: 'none', borderRight: 'none',
+        pointerEvents: 'none'
       }}>
+        {/* Container for external actions like Start New (adjacent left to user info, not inside it) */}
+        <div id="top-bar-actions" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}></div>
+
+        {/* User Info Box */}
+        <div style={{
+          pointerEvents: 'auto',
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.7rem 1.25rem',
+          background: 'rgba(167, 215, 250, 0.91)',
+          backdropFilter: 'blur(12px)',
+          borderBottomLeftRadius: '1rem',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderTop: 'none', borderRight: 'none',
+        }}>
         <div style={{ fontSize: '0.8rem', color: 'rgba(0, 0, 0, 0.8)', fontWeight: 500 }}>
           <span style={{ marginRight: '0.4rem', opacity: 0.6 }}>登入者：</span>
           <strong style={{ color: 'rgba(5, 100, 253, 0.8)' }}>{authState.username}</strong>
@@ -352,6 +361,7 @@ function App() {
           </svg>
           登出
         </button>
+      </div>
       </div>
 
       {/* Change Password Modal */}
