@@ -4,15 +4,16 @@ import Loader from './Loader';
 import MindMapTree from './MindMapTree';
 import ColumnSelectionModal from './ColumnSelectionModal';
 import ClassificationSettingsModal from './ClassificationSettingsModal';
-import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp } from 'lucide-react';
+import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp, BarChart2 } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
 const SunburstView = lazy(() => import('./SunburstView'));
 const LifeCycleChart = lazy(() => import('./LifeCycleChart'));
+const PatentTrendChart = lazy(() => import('./PatentTrendChart'));
 
 const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
-  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', or 'lifecycle'
+  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', 'lifecycle', or 'trend'
   const [hierarchyType, setHierarchyType] = useState('mindmap'); // 'mindmap' or 'sunburst'
   const [showOtherCategories, setShowOtherCategories] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -1560,8 +1561,28 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                 重新分類設定
               </button>
 
-              {/* Primary Segmented View Mode Toggle: LifeCycle (Left) -> Tree -> Heatmap */}
+              {/* Primary Segmented View Mode Toggle: Trend (Left) -> LifeCycle -> Tree -> Heatmap */}
               <div style={{ display: 'inline-flex', background: 'rgba(126, 190, 250, 0.06)', borderRadius: '0.5rem', padding: '2px', border: '1px solid rgba(255,255,255,0.1)', marginLeft: '0.5rem', gap: '0.5rem' }}>
+                <button
+                  onClick={() => setViewMode('trend')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: '0.4rem',
+                    background: viewMode === 'trend' ? 'rgba(82, 152, 245, 1)' : 'rgba(144, 212, 226, 1)',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <BarChart2 size={14} />
+                  專利趨勢圖
+                </button>
                 <button
                   onClick={() => setViewMode('lifecycle')}
                   style={{
@@ -1708,6 +1729,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               <div style={{ display: viewMode === 'lifecycle' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入技術生命週期圖...</div>}>
                   <LifeCycleChart treeData={treeData} onCaptureReady={viewMode === 'lifecycle' ? setCaptureImage : undefined} authState={authState} />
+                </Suspense>
+              </div>
+
+              <div style={{ display: viewMode === 'trend' ? 'block' : 'none', width: '100%', height: '100%' }}>
+                <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入專利趨勢圖...</div>}>
+                  <PatentTrendChart treeData={treeData} onCaptureReady={viewMode === 'trend' ? setCaptureImage : undefined} authState={authState} />
                 </Suspense>
               </div>
             </div>

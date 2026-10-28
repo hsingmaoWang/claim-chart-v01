@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
-import { TrendingUp, Users, FileText, Info, Sun, Moon } from 'lucide-react';
+import { TrendingUp, Users, FileText, Info, Sun, Moon, AlertTriangle } from 'lucide-react';
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -46,15 +46,32 @@ const extract4DigitYear = (dateVal) => {
   return null;
 };
 
-// Split multi-assignee string by common delimiters (e.g., semicolons, commas, Chinese ideographic commas)
-const parseAssignees = (rawVal) => {
-  if (!rawVal) return [];
-  if (Array.isArray(rawVal)) {
-    return rawVal.map(s => String(s).trim()).filter(Boolean);
-  }
+// Calculate assignee count for a single representative patent:
+// Exclusively based on "Optimized Assignee" field by counting '|' occurrences + 1.
+// If 0 '|' occurrences (or field is empty/unspecified), count is 1.
+// Do NOT split by commas, semicolons, or ideographic commas.
+const calculatePatentAssigneeCount = (rawVal) => {
+  if (rawVal === undefined || rawVal === null) return 1;
   const str = String(rawVal).trim();
-  if (!str) return [];
-  return str.split(/[;,、\n\r]+/).map(s => s.trim()).filter(Boolean);
+  if (!str) return 1;
+  const pipeMatches = str.match(/\|/g);
+  return (pipeMatches ? pipeMatches.length : 0) + 1;
+};
+
+// Requirement 1: Exclusively find "Optimized Assignee" column (case-insensitive)
+const findOptimizedAssigneeKey = (patents) => {
+  if (!patents || patents.length === 0) return null;
+  for (let i = 0; i < Math.min(patents.length, 30); i++) {
+    const p = patents[i];
+    if (!p) continue;
+    const keys = Object.keys(p);
+    const matched = keys.find(k => {
+      const norm = k.toLowerCase().replace(/[\s_\-]+/g, ' ').trim();
+      return norm === 'optimized assignee' || norm.startsWith('optimized assignee');
+    });
+    if (matched) return matched;
+  }
+  return null;
 };
 
 const findFieldCaseInsensitive = (item, candidateKeys) => {
@@ -169,41 +186,53 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
     return representatives;
   }, [rawPatents]);
 
-  // Step 1 & Step 2: Compute Life Cycle Coordinates with Requirement 4 (Math.ceil to integer)
+  // Requirement 1: Exclusively find "Optimized Assignee" column in uploaded patents
+  const optimizedAssigneeKey = useMemo(() => {
+    return findOptimizedAssigneeKey(rawPatents);
+  }, [rawPatents]);
+
+  // Step 1 & Step 2: Compute Life Cycle Coordinates based on Optimized Assignee and INPADOC Family Representative Patents
   const lifeCycleData = useMemo(() => {
+    if (!rawPatents || rawPatents.length === 0) {
+      return { yearlyList: [], totalCases: 0, totalAssignees: 0, missingOptimizedAssignee: false };
+    }
+
+    // Requirement 1: If Optimized Assignee is missing, flag it so user is prompted to provide it
+    if (!optimizedAssigneeKey) {
+      return { yearlyList: [], totalCases: 0, totalAssignees: 0, missingOptimizedAssignee: true };
+    }
+
     if (!familyRepresentativePatents || familyRepresentativePatents.length === 0) {
-      return { yearlyList: [], totalCases: 0, totalAssignees: 0 };
+      return { yearlyList: [], totalCases: 0, totalAssignees: 0, missingOptimizedAssignee: false };
     }
 
     // Step 1: Group by Application Year
     const appDateCandidates = ['Application Date', 'application date', '申請日', '申請年', '申請日期', 'app_date', 'application_date'];
-    const assigneeCandidates = ['Assignee/Applicant', 'assignee/applicant', 'Optimized Assignee', 'optimized assignee', '專利權人', '申請人', '權利人', 'assignee', 'applicant'];
 
     const yearMap = new Map();
     let validPatentCount = 0;
-    const allDistinctAssignees = new Set();
+    let totalAssigneeCount = 0;
 
     familyRepresentativePatents.forEach(p => {
       const appDateVal = findFieldCaseInsensitive(p, appDateCandidates);
       const year = extract4DigitYear(appDateVal);
       if (!year || year < 1900 || year > 2100) return;
 
-      const rawAssignee = findFieldCaseInsensitive(p, assigneeCandidates);
-      const parsedAssignees = parseAssignees(rawAssignee);
+      // Requirement 2 & 3: Only count '|' + 1 from Optimized Assignee, no comma/semicolon/dunhao splitting
+      const rawAssignee = p[optimizedAssigneeKey];
+      const assigneeCount = calculatePatentAssigneeCount(rawAssignee);
 
       if (!yearMap.has(year)) {
         yearMap.set(year, {
-          assignees: new Set(),
+          assigneeCount: 0,
           caseCount: 0
         });
       }
 
       const entry = yearMap.get(year);
       entry.caseCount += 1;
-      parsedAssignees.forEach(a => {
-        entry.assignees.add(a);
-        allDistinctAssignees.add(a);
-      });
+      entry.assigneeCount += assigneeCount;
+      totalAssigneeCount += assigneeCount;
       validPatentCount += 1;
     });
 
@@ -212,7 +241,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
     const n = sortedYears.length;
 
     if (n === 0) {
-      return { yearlyList: [], totalCases: 0, totalAssignees: 0 };
+      return { yearlyList: [], totalCases: 0, totalAssignees: 0, missingOptimizedAssignee: false };
     }
 
     // Raw points (x1, y1)
@@ -220,7 +249,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
       const entry = yearMap.get(year);
       return {
         year,
-        x1: entry.assignees.size, // 專利權人數
+        x1: entry.assigneeCount, // 專利權人數 (累計總人次)
         y1: entry.caseCount       // 專利案數
       };
     });
@@ -268,9 +297,10 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
     return {
       yearlyList: smoothedPoints,
       totalCases: validPatentCount,
-      totalAssignees: allDistinctAssignees.size
+      totalAssignees: totalAssigneeCount,
+      missingOptimizedAssignee: false
     };
-  }, [familyRepresentativePatents]);
+  }, [rawPatents, familyRepresentativePatents, optimizedAssigneeKey]);
 
   // Capture Image handler for PNG download (supports dark and light background)
   const captureImage = useCallback(async () => {
@@ -320,7 +350,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
     }
   }, [captureImage, onCaptureReady]);
 
-  const { yearlyList, totalCases, totalAssignees } = lifeCycleData;
+  const { yearlyList, totalCases, totalAssignees, missingOptimizedAssignee } = lifeCycleData;
 
   // Prepare Plotly data traces based on theme
   const plotlyData = useMemo(() => {
@@ -360,11 +390,11 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
       textposition: 'top center',
       textfont: {
         family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-        size: 12,
+        size: 14,
         color: isDark ? '#f8fafc' : '#334155'
       },
       marker: {
-        size: 10,
+        size: 12,
         color: colors,
         line: {
           color: isDark ? '#0f172a' : '#ffffff',
@@ -403,7 +433,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
       text: '<b>專利技術生命週期圖</b>',
       font: {
         family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang TC", "Microsoft JhengHei", sans-serif',
-        size: 20,
+        size: 24,
         color: isDark ? '#f8fafc' : '#1e293b'
       },
       x: 0.5,
@@ -417,7 +447,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
     xaxis: {
       title: {
         text: '<b>專利權人數</b>',
-        font: { size: 16, color: isDark ? '#f1f5f9' : '#334155' }
+        font: { size: 20, color: isDark ? '#f1f5f9' : '#334155' }
       },
       range: [0, maxX],
       zeroline: true,
@@ -427,12 +457,12 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
       gridwidth: 1,
       linecolor: isDark ? 'rgba(255,255,255,0.25)' : '#94a3b8',
       linewidth: 1,
-      tickfont: { size: 11, color: isDark ? '#94a3b8' : '#475569' }
+      tickfont: { size: 14, color: isDark ? '#94a3b8' : '#475569' }
     },
     yaxis: {
       title: {
         text: '<b>專利案數</b>',
-        font: { size: 15, color: isDark ? '#f1f5f9' : '#334155' }
+        font: { size: 20, color: isDark ? '#f1f5f9' : '#334155' }
       },
       range: [0, maxY],
       zeroline: true,
@@ -442,7 +472,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
       gridwidth: 1,
       linecolor: isDark ? 'rgba(255,255,255,0.25)' : '#94a3b8',
       linewidth: 1,
-      tickfont: { size: 11, color: isDark ? '#94a3b8' : '#475569' }
+      tickfont: { size: 14, color: isDark ? '#94a3b8' : '#475569' }
     },
     hoverlabel: {
       bgcolor: isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(15, 23, 42, 0.92)',
@@ -450,6 +480,62 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
       font: { color: '#ffffff', size: 12 }
     }
   }), [maxX, maxY, isDark]);
+
+  if (missingOptimizedAssignee) {
+    return (
+      <div style={{
+        height: '100%',
+        minHeight: '780px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: isDark ? '#0f172a' : '#ffffff',
+        borderRadius: '1rem',
+        padding: '2.5rem',
+        color: isDark ? '#94a3b8' : '#64748b',
+        gap: '1.25rem',
+        border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(226, 232, 240, 0.8)'}`,
+        boxShadow: isDark ? '0 10px 30px rgba(0, 0, 0, 0.5)' : '0 4px 20px rgba(0, 0, 0, 0.05)',
+      }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          borderRadius: '50%',
+          background: isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <AlertTriangle size={36} style={{ color: '#f59e0b' }} />
+        </div>
+        <h3 style={{ margin: 0, color: isDark ? '#f8fafc' : '#1e293b', fontSize: '1.25rem' }}>
+          缺少「Optimized Assignee」專利權人欄位
+        </h3>
+        <p style={{ margin: 0, fontSize: '0.95rem', maxWidth: '540px', textAlign: 'center', lineHeight: '1.6' }}>
+          專利技術生命週期圖中專利權人數僅依據「<strong>Optimized Assignee</strong>」欄位資料進行計算。<br />
+          目前上傳的專利清單中未包含此欄位，請於專利清單中補齊「Optimized Assignee」欄位資料後重新分析匯入。
+        </p>
+        <div style={{
+          marginTop: '0.5rem',
+          padding: '0.9rem 1.4rem',
+          borderRadius: '0.75rem',
+          background: isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc',
+          border: `1px dashed ${isDark ? '#475569' : '#cbd5e1'}`,
+          fontSize: '0.88rem',
+          color: isDark ? '#cbd5e1' : '#475569',
+          textAlign: 'left',
+          lineHeight: '1.65'
+        }}>
+          <div>📌 <strong>欄位規範與計算規則說明：</strong></div>
+          <div style={{ marginTop: '0.35rem' }}>1. <strong>欄位名稱</strong>：必須包含 <code>Optimized Assignee</code> 欄位</div>
+          <div>2. <strong>共同專利權人</strong>：以「<code>|</code>」符號分隔（例如：<code>公司A | 公司B</code>）</div>
+          <div>3. <strong>專利權人數</strong>：代表案專利權人數 = 出現「<code>|</code>」符號次數 + 1（不使用逗號、分號或頓號等方式拆分）</div>
+          <div>4. <strong>家族代表案</strong>：同一 INPADOC Family ID 僅由代表案計算專利權人數</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!yearlyList || yearlyList.length === 0) {
     return (
@@ -467,9 +553,9 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
         gap: '1rem'
       }}>
         <Info size={40} style={{ color: '#0ea5e9' }} />
-        <h3 style={{ margin: 0, color: isDark ? '#f8fafc' : '#1e293b' }}>無有效申請年或專利權人資料</h3>
+        <h3 style={{ margin: 0, color: isDark ? '#f8fafc' : '#1e293b' }}>無有效申請年資料</h3>
         <p style={{ margin: 0, fontSize: '0.9rem', maxWidth: '420px', textAlign: 'center' }}>
-          技術生命週期圖需讀取專利清單中的「申請日 (Application Date)」與「專利權人 (Assignee/Applicant)」欄位。請確認上傳檔案是否包含對應欄位資訊。
+          技術生命週期圖需讀取專利清單中的「申請日 (Application Date)」欄位。請確認上傳檔案是否包含對應欄位資訊。
         </p>
       </div>
     );
@@ -506,11 +592,11 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#38bdf8' : '#0369a1', fontSize: '0.88rem', fontWeight: 600 }}>
             <FileText size={16} />
-            <span>統計母體：{totalCases} 專利家族案</span>
+            <span>統計母體：{totalCases} 專利家族案 (INPADOC Family)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#34d399' : '#047857', fontSize: '0.88rem', fontWeight: 600 }}>
             <Users size={16} />
-            <span>涵蓋專利權人：{totalAssignees} 家</span>
+            <span>累計專利權人數：{totalAssignees} 人次 (Optimized Assignee)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#a78bfa' : '#6366f1', fontSize: '0.88rem', fontWeight: 600 }}>
             <TrendingUp size={16} />
@@ -519,9 +605,6 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ fontSize: '0.84rem', color: isDark ? '#94a3b8' : '#576476ff' }}>
-            * 座標採移動平均平滑後無條件進位至整數（端點 2 年平均、中間 3 年平均）
-          </div>
 
           {/* Requirement 2: Exactly matching Day/Night Theme toggle button as other charts */}
           <div style={{
@@ -607,7 +690,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr style={{ color: isDark ? '#f8fafc' : '#1e293b' }}>
                 <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}`, boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(0,0,0,0.08)' }}>申請年</th>
-                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}`, boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(0,0,0,0.08)' }}>原始專利權人數 (x1)</th>
+                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}`, boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(0,0,0,0.08)' }}>原始專利權人數 (x1, 人次)</th>
                 <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}`, boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(0,0,0,0.08)' }}>原始專利案數 (y1)</th>
                 <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}`, boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(0,0,0,0.08)' }}>X 座標 (移動平均整數)</th>
                 <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}`, boxShadow: isDark ? '0 1px 2px rgba(0,0,0,0.4)' : '0 1px 2px rgba(0,0,0,0.08)' }}>Y 座標 (移動平均整數)</th>

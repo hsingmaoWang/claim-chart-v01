@@ -1196,7 +1196,7 @@ def classify_excel_columns(df):
     selectable_cols = [c for c in all_cols if c not in ai_cols and c not in required_cols]
     
     # 推薦欄位 (智慧預先打勾的分析欄位)
-    rec_keywords = ["年", "日", "人", "權", "類", "對象", "國", "date", "year", "applicant", "assignee", "ipc", "cpc", "country"]
+    rec_keywords = ["年", "人", "分類", "國", "date", "year", "applicant", "assignee", "ipc", "cpc", "country", "family id"]
     recommended_cols = [c for c in selectable_cols if any(k in c.lower() for k in rec_keywords)]
     
     return {

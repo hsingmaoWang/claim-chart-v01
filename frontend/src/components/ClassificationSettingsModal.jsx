@@ -67,7 +67,7 @@ const ClassificationSettingsModal = ({ isOpen, onClose, onConfirm, currentConfig
       padding: '1rem'
     }}>
       <div style={{
-        background: 'linear-gradient(145deg, rgba(231, 188, 253, 1), rgba(88, 246, 233, 0.98))',
+        background: 'linear-gradient(145deg, rgba(144, 231, 223, 0.98), rgba(122, 207, 215, 1))',
         borderRadius: '1rem',
         border: '1px solid rgba(148, 163, 184, 0.2)',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 25px rgba(56, 189, 248, 0.15)',
@@ -134,7 +134,7 @@ const ClassificationSettingsModal = ({ isOpen, onClose, onConfirm, currentConfig
         <form onSubmit={handleSubmit}>
           <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{
-              background: 'rgba(56, 189, 248, 0.06)',
+              background: 'rgba(56, 189, 248, 0.2)',
               border: '1px solid rgba(56, 189, 248, 0.18)',
               borderRadius: '0.6rem',
               padding: '0.75rem 1rem',
@@ -157,7 +157,7 @@ const ClassificationSettingsModal = ({ isOpen, onClose, onConfirm, currentConfig
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '0.65rem 0.85rem',
-                    background: 'rgba(30, 41, 59, 0.1)',
+                    background: 'rgba(30, 41, 59, 0.08)',
                     borderRadius: '0.6rem',
                     border: '1px solid rgba(148, 163, 184, 0.12)'
                   }}
@@ -166,7 +166,7 @@ const ClassificationSettingsModal = ({ isOpen, onClose, onConfirm, currentConfig
                     <label style={{ fontSize: '1rem', fontWeight: 600, color: '#0612fd8f' }}>
                       {field.label}
                     </label>
-                    <span style={{ fontSize: '0.8rem', color: '#fefefeff' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#ffffffff' }}>
                       {field.desc}
                     </span>
                   </div>
