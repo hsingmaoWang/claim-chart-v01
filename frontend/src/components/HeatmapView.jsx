@@ -487,7 +487,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   // Master Chart Configuration state
   const [chartConfig, setChartConfig] = useState({
     filterField: '',
-    filterValue: '',
+    filterValues: [],   // string[] — empty = no filter (multi-item)
     xAxisLevels: 2,
     xAxisFields: ['技術1階', '技術2階'],
     xAxisTopN: 'all',
@@ -496,18 +496,19 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     yAxisTopN: 'all'
   });
 
-  // Requirement 4a: Single-Item Data Filter
+  // Multi-Item Data Filter
   const patents = useMemo(() => {
-    if (!chartConfig.filterField || !chartConfig.filterValue || chartConfig.filterValue === '__ALL__') {
+    const fv = chartConfig.filterValues;
+    if (!chartConfig.filterField || !fv || fv.length === 0) {
       return rawPatents;
     }
     const f = chartConfig.filterField;
-    const v = chartConfig.filterValue;
+    const vs = new Set(fv);
     return rawPatents.filter(p => {
       const vals = normalizeDimensionValue(p, f);
-      return vals.includes(v);
+      return vals.some(v => vs.has(v));
     });
-  }, [rawPatents, chartConfig.filterField, chartConfig.filterValue]);
+  }, [rawPatents, chartConfig.filterField, chartConfig.filterValues]);
 
   // Dimension zone state (synchronized with chartConfig)
   const [zones, setZones] = useState({
@@ -1324,9 +1325,13 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
             color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.7)',
             lineHeight: 1.6
           }}>
-            {chartConfig.filterField && chartConfig.filterValue && (
-              <div style={{ color: '#38bdf8', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.3rem' }}>
-                🔍 篩選: {chartConfig.filterField} = {chartConfig.filterValue}
+            {chartConfig.filterField && chartConfig.filterValues?.length > 0 && (
+              <div style={{ color: '#c084fc', fontSize: '0.68rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                🔍 {chartConfig.filterField}：
+                {chartConfig.filterValues.length === 1
+                  ? chartConfig.filterValues[0]
+                  : `${chartConfig.filterValues.slice(0, 2).join('、')}${chartConfig.filterValues.length > 2 ? ` 等 ${chartConfig.filterValues.length} 項` : ''}`
+                }
               </div>
             )}
             <div>📄 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>分析專利件數：</strong>{patents.length} / {rawPatents.length}</div>

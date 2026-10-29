@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Settings, X as XIcon, Sparkles, Filter, Layers, BarChart2, Check } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Settings, X as XIcon, Sparkles, Filter, Layers, BarChart2, Check, ChevronDown } from 'lucide-react';
 
 const HeatmapSettingsModal = ({
   isOpen,
@@ -45,7 +45,15 @@ const HeatmapSettingsModal = ({
 
   // Local state for modal settings
   const [filterField, setFilterField] = useState(currentConfig?.filterField || '');
-  const [filterValue, setFilterValue] = useState(currentConfig?.filterValue || '__ALL__');
+  // filterValues: string[] — empty array means "no filter / all"
+  const [filterValues, setFilterValues] = useState(() => {
+    if (currentConfig?.filterValues?.length) return currentConfig.filterValues;
+    // backward compat: migrate old single filterValue string
+    if (currentConfig?.filterValue && currentConfig.filterValue !== '__ALL__') return [currentConfig.filterValue];
+    return [];
+  });
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+  const filterDropdownRef = useRef(null);
 
   const [xAxisLevels, setXAxisLevels] = useState(currentConfig?.xAxisLevels || 1);
   const [xAxisField1, setXAxisField1] = useState(currentConfig?.xAxisFields?.[0] || '技術1階');
@@ -61,7 +69,15 @@ const HeatmapSettingsModal = ({
   useEffect(() => {
     if (currentConfig) {
       setFilterField(currentConfig.filterField || '');
-      setFilterValue(currentConfig.filterValue || '__ALL__');
+      // Backward compat: support old filterValue string format
+      if (currentConfig.filterValues?.length) {
+        setFilterValues(currentConfig.filterValues);
+      } else if (currentConfig.filterValue && currentConfig.filterValue !== '__ALL__') {
+        setFilterValues([currentConfig.filterValue]);
+      } else {
+        setFilterValues([]);
+      }
+      setFilterDropdownOpen(false);
 
       setXAxisLevels(currentConfig.xAxisLevels || (currentConfig.xAxisFields?.length > 1 ? 2 : 1));
       setXAxisField1(currentConfig.xAxisFields?.[0] || '技術1階');
@@ -74,6 +90,29 @@ const HeatmapSettingsModal = ({
       setYAxisTopN(currentConfig.yAxisTopN || 'all');
     }
   }, [currentConfig, isOpen]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!filterDropdownOpen) return;
+    const handler = (e) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(e.target)) {
+        setFilterDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [filterDropdownOpen]);
+
+  // Helper: toggle a single value in filterValues
+  const toggleFilterValue = (val) => {
+    setFilterValues(prev =>
+      prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]
+    );
+  };
+
+  // Helper: select all / clear all
+  const selectAllFilterValues = () => setFilterValues(filterValueOptions.map(o => o.value));
+  const clearFilterValues = () => setFilterValues([]);
 
   // Helper to check if field is date-related
   const isDateField = (dim) => {
@@ -211,7 +250,7 @@ const HeatmapSettingsModal = ({
 
     onApply({
       filterField: filterField === '__NONE__' ? '' : filterField,
-      filterValue: filterValue === '__ALL__' ? '' : filterValue,
+      filterValues: filterValues,   // string[] — empty = no filter
       xAxisLevels,
       xAxisFields: xFields,
       xAxisTopN,
@@ -386,7 +425,7 @@ const HeatmapSettingsModal = ({
               </div>
             </div>
 
-            {/* Global Single-Item Filter Section (4a) */}
+            {/* Global Multi-Item Filter Section */}
             <div style={{
               padding: '14px 16px',
               borderRadius: '12px',
@@ -396,11 +435,24 @@ const HeatmapSettingsModal = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
                 <Filter size={16} color={isDark ? '#a855f7' : '#9333ea'} />
                 <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isDark ? '#e2e8f0' : '#1e293b' }}>
-                  整體資料單一項目篩選器 (Single-Item Filter)
+                  整體資料篩選器 (Multi-Item Filter)
                 </span>
+                {filterValues.length > 0 && (
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '1px 7px',
+                    borderRadius: '999px',
+                    background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                    color: '#fff'
+                  }}>
+                    已選 {filterValues.length} 項
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* Column selector */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}>
                     選擇篩選欄位：
@@ -410,7 +462,8 @@ const HeatmapSettingsModal = ({
                     onChange={e => {
                       const val = e.target.value;
                       setFilterField(val === '__NONE__' ? '' : val);
-                      setFilterValue('__ALL__');
+                      setFilterValues([]);
+                      setFilterDropdownOpen(false);
                     }}
                     style={{
                       width: '100%',
@@ -431,14 +484,22 @@ const HeatmapSettingsModal = ({
                   </select>
                 </div>
 
-                <div>
+                {/* Multi-value Checkbox Dropdown */}
+                <div style={{ position: 'relative' }} ref={filterDropdownRef}>
                   <label style={{ display: 'block', fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}>
                     選擇篩選數值：
+                    {filterValues.length > 0 && (
+                      <span style={{ marginLeft: '6px', color: isDark ? '#c084fc' : '#7c3aed', fontWeight: 600 }}>
+                        {filterValues.length}/{filterValueOptions.length} 項已選
+                      </span>
+                    )}
                   </label>
-                  <select
+
+                  {/* Trigger button */}
+                  <button
+                    type="button"
                     disabled={!filterField || filterField === '__NONE__'}
-                    value={filterValue}
-                    onChange={e => setFilterValue(e.target.value)}
+                    onClick={() => setFilterDropdownOpen(o => !o)}
                     style={{
                       width: '100%',
                       padding: '8px 12px',
@@ -447,18 +508,161 @@ const HeatmapSettingsModal = ({
                         ? (isDark ? '#1e293b' : '#f1f5f9')
                         : (isDark ? '#0f172a' : '#ffffff'),
                       color: isDark ? '#f8fafc' : '#0f172a',
-                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)'}`,
+                      border: `1px solid ${
+                        filterDropdownOpen
+                          ? (isDark ? 'rgba(168, 85, 247, 0.7)' : 'rgba(124, 58, 237, 0.5)')
+                          : (isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)')
+                      }`,
                       fontSize: '0.85rem',
-                      opacity: (!filterField || filterField === '__NONE__') ? 0.5 : 1
+                      opacity: (!filterField || filterField === '__NONE__') ? 0.5 : 1,
+                      cursor: (!filterField || filterField === '__NONE__') ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      textAlign: 'left',
+                      transition: 'border-color 0.15s ease'
                     }}
                   >
-                    <option value="__ALL__">全部數值 (不限定單一項目)</option>
-                    {filterValueOptions.map(item => (
-                      <option key={item.value} value={item.value}>
-                        {item.value} ({item.count})
-                      </option>
-                    ))}
-                  </select>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {filterValues.length === 0
+                        ? '全部數值 (不限定篩選項目)'
+                        : filterValues.length === 1
+                          ? filterValues[0]
+                          : `已選 ${filterValues.length} 個項目`
+                      }
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        flexShrink: 0,
+                        transition: 'transform 0.2s ease',
+                        transform: filterDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                        color: isDark ? '#94a3b8' : '#64748b'
+                      }}
+                    />
+                  </button>
+
+                  {/* Dropdown panel */}
+                  {filterDropdownOpen && filterValueOptions.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      left: 0,
+                      right: 0,
+                      zIndex: 9999,
+                      borderRadius: '10px',
+                      backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                      border: `1px solid ${isDark ? 'rgba(168, 85, 247, 0.4)' : 'rgba(124, 58, 237, 0.25)'}`,
+                      boxShadow: isDark
+                        ? '0 8px 24px rgba(0,0,0,0.5)'
+                        : '0 8px 24px rgba(0,0,0,0.12)',
+                      overflow: 'hidden'
+                    }}>
+                      {/* Select all / Clear all toolbar */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '7px 10px',
+                        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'}`,
+                        background: isDark ? 'rgba(168, 85, 247, 0.1)' : 'rgba(124, 58, 237, 0.05)'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={selectAllFilterValues}
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            color: isDark ? '#c084fc' : '#7c3aed',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          ☑ 全選 ({filterValueOptions.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearFilterValues}
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            color: isDark ? '#94a3b8' : '#64748b',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          🗑 清除
+                        </button>
+                        <span style={{ fontSize: '0.7rem', color: isDark ? '#64748b' : '#94a3b8' }}>
+                          已選 {filterValues.length} / {filterValueOptions.length}
+                        </span>
+                      </div>
+
+                      {/* Checkbox list */}
+                      <div style={{
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        padding: '4px 0'
+                      }}>
+                        {filterValueOptions.map(item => {
+                          const isChecked = filterValues.includes(item.value);
+                          return (
+                            <label
+                              key={item.value}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '5px 10px',
+                                cursor: 'pointer',
+                                background: isChecked
+                                  ? (isDark ? 'rgba(168, 85, 247, 0.15)' : 'rgba(124, 58, 237, 0.07)')
+                                  : 'transparent',
+                                transition: 'background 0.12s ease'
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleFilterValue(item.value)}
+                                style={{
+                                  accentColor: '#a855f7',
+                                  width: '14px',
+                                  height: '14px',
+                                  flexShrink: 0,
+                                  cursor: 'pointer'
+                                }}
+                              />
+                              <span style={{
+                                flex: 1,
+                                fontSize: '0.82rem',
+                                color: isDark ? '#e2e8f0' : '#1e293b',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {item.value}
+                              </span>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                color: isDark ? '#64748b' : '#94a3b8',
+                                flexShrink: 0
+                              }}>
+                                ({item.count})
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
