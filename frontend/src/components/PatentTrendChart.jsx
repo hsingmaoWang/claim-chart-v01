@@ -401,7 +401,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
         cliponaxis: false,
         textfont: {
           family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          size: 11,
+          size: 13,
           color: isDark ? '#e2e8f0' : '#475569'
         },
         marker: {
@@ -428,7 +428,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
         cliponaxis: false,
         textfont: {
           family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          size: 11,
+          size: 13,
           color: isDark ? '#e2e8f0' : '#475569'
         },
         marker: {
@@ -455,7 +455,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
         cliponaxis: false,
         textfont: {
           family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          size: 11,
+          size: 13,
           color: isDark ? '#e2e8f0' : '#475569'
         },
         marker: {
@@ -494,7 +494,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
         text: `<b>${chartTitle}</b>`,
         font: {
           family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          size: 20,
+          size: 24,
           color: isDark ? '#f8fafc' : '#1e293b'
         },
         x: 0.5,
@@ -514,14 +514,14 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
         xanchor: 'right',
         yanchor: 'top',
         font: {
-          size: 13,
+          size: 16,
           color: isDark ? '#cbd5e1' : '#475569'
         }
       },
       xaxis: {
         title: {
           text: '<b>年份</b>',
-          font: { size: 14, color: isDark ? '#94a3b8' : '#64748b' }
+          font: { size: 18, color: isDark ? '#94a3b8' : '#64748b' }
         },
         type: 'category',
         tickangle: 0,
@@ -530,12 +530,12 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
         gridwidth: 1,
         linecolor: isDark ? 'rgba(255,255,255,0.25)' : '#94a3b8',
         linewidth: 1,
-        tickfont: { size: 11, color: isDark ? '#cbd5e1' : '#475569' }
+        tickfont: { size: 12, color: isDark ? '#cbd5e1' : '#475569' }
       },
       yaxis: {
         title: {
           text: `<b>專利${metric === 'case' ? '案數' : '件數'}</b>`,
-          font: { size: 14, color: isDark ? '#94a3b8' : '#64748b' }
+          font: { size: 18, color: isDark ? '#94a3b8' : '#64748b' }
         },
         range: [0, yTop],
         zeroline: true,
@@ -878,7 +878,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
             <AlertTriangle size={36} style={{ color: '#f59e0b' }} />
             <h4 style={{ margin: 0, color: isDark ? '#f8fafc' : '#1e293b' }}>無法顯示趨勢圖</h4>
             <p style={{ margin: 0, fontSize: '0.88rem' }}>
-              所選取的年份維度在資料集中皆無有效年份資料或缺少對應欄位。
+              資料清單中缺乏有效日期資料或缺少對應欄位。
             </p>
           </div>
         )}
@@ -897,7 +897,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
             檢視各年份專利{metric === 'case' ? '案數' : '件數'}數據明細表
           </summary>
           <div style={{ overflowX: 'auto', marginTop: '0.6rem', maxHeight: '220px', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.9rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '1.0rem' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr style={{ color: isDark ? '#f8fafc' : '#1e293b' }}>
                   <th style={{ position: 'sticky', top: 0, zIndex: 2, background: isDark ? '#334155' : '#b3d1f8ff', padding: '0.45rem 0.6rem', border: `1px solid ${isDark ? '#475569' : '#cbd5e1'}` }}>年份</th>

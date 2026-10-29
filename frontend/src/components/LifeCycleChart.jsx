@@ -512,7 +512,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
         <h3 style={{ margin: 0, color: isDark ? '#f8fafc' : '#1e293b', fontSize: '1.25rem' }}>
           缺少「Optimized Assignee」專利權人欄位
         </h3>
-        <p style={{ margin: 0, fontSize: '0.95rem', maxWidth: '540px', textAlign: 'center', lineHeight: '1.6' }}>
+        <p style={{ margin: 0, fontSize: '0.95rem', maxWidth: '540px', textAlign: 'left', lineHeight: '1.6' }}>
           專利技術生命週期圖中專利權人數僅依據「<strong>Optimized Assignee</strong>」欄位資料進行計算。<br />
           目前上傳的專利清單中未包含此欄位，請於專利清單中補齊「Optimized Assignee」欄位資料後重新分析匯入。
         </p>
@@ -530,8 +530,7 @@ const LifeCycleChart = ({ treeData, onCaptureReady, authState }) => {
           <div>📌 <strong>欄位規範與計算規則說明：</strong></div>
           <div style={{ marginTop: '0.35rem' }}>1. <strong>欄位名稱</strong>：必須包含 <code>Optimized Assignee</code> 欄位</div>
           <div>2. <strong>共同專利權人</strong>：以「<code>|</code>」符號分隔（例如：<code>公司A | 公司B</code>）</div>
-          <div>3. <strong>專利權人數</strong>：代表案專利權人數 = 出現「<code>|</code>」符號次數 + 1（不使用逗號、分號或頓號等方式拆分）</div>
-          <div>4. <strong>家族代表案</strong>：同一 INPADOC Family ID 僅由代表案計算專利權人數</div>
+          <div>3. <strong>家族代表案</strong>：同一 INPADOC Family ID 僅由代表案計算專利權人數</div>
         </div>
       </div>
     );
