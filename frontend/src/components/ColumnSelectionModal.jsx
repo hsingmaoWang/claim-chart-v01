@@ -79,7 +79,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
         border: '1px solid rgba(5, 100, 177, 0.1)',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '760px',
+        maxWidth: '950px',
         maxHeight: '85vh',
         display: 'flex',
         flexDirection: 'column',
@@ -135,7 +135,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
             {patent_processing && (
               <div style={{
                 marginTop: '10px',
-                width: '90%',
+                width: '100%',
+                boxSizing: 'border-box',
                 padding: '10px 14px',
                 borderRadius: '10px',
                 backgroundColor: 'rgba(67, 106, 164, 0.45)',
@@ -474,7 +475,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
             </span>
           </label>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' }}>
             <button
               type="button"
               onClick={onClose}
