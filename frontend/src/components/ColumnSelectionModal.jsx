@@ -267,7 +267,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
             }}>
               {required_columns && required_columns.length > 0 ? (
                 required_columns.map((col, idx) => (
-                  <div key={idx} style={{
+                  <div key={idx} title={col} style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
@@ -389,6 +389,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                   return (
                     <div
                       key={idx}
+                      title={col}
                       onClick={() => toggleColumn(col)}
                       style={{
                         display: 'flex',
@@ -410,12 +411,15 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                         <div style={{ color: isChecked ? '#ece0bbff' : '#64748b' }}>
                           {isChecked ? <CheckSquare size={16} /> : <Square size={16} />}
                         </div>
-                        <span style={{
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          fontWeight: isChecked ? 600 : 400
-                        }}>
+                        <span
+                          title={col}
+                          style={{
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            fontWeight: isChecked ? 600 : 400
+                          }}
+                        >
                           {col}
                         </span>
                       </div>
