@@ -136,12 +136,24 @@ const generateMarkdown = (node, depth = 0) => {
     return result;
 };
 
-const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureReady, authState, showOtherCategories = true, setShowOtherCategories }) => {
+const MindMapTree = ({
+    treeData,
+    levelHierarchy,
+    setLevelHierarchy,
+    onCaptureReady,
+    authState,
+    showOtherCategories = true,
+    setShowOtherCategories,
+    theme: propTheme,
+    setTheme: propSetTheme
+}) => {
     const treeContainerRef = useRef(null);
     const svgRef = useRef(null);
     const markmapRef = useRef(null);
     const [selectedPatents, setSelectedPatents] = useState(null);
-    const [theme, setTheme] = useState('light'); // default: light (day) mode
+    const [localTheme, setLocalTheme] = useState('light');
+    const theme = propTheme !== undefined ? propTheme : localTheme;
+    const setTheme = propSetTheme || setLocalTheme;
 
     const handleDragEnd = (event) => {
         const { active, over } = event;
@@ -626,14 +638,16 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
             {/* Main Tree Canvas using Markmap */}
             <div ref={treeContainerRef} className={`mindmap-theme-${theme}`} style={{ flex: 1, position: 'relative', background: theme === 'dark' ? '#0f172a' : '#ffffff', overflow: 'hidden', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }}>
 
-                <div style={{ position: 'absolute', top: '1rem', left: '1rem', zIndex: 5, background: 'rgba(0,0,0,0.5)', padding: '0.5rem', borderRadius: '2rem', display: 'flex', gap: '0.5rem' }}>
-                    <button title="不透明黑色" onClick={() => setTheme('dark')} style={{ background: theme === 'dark' ? '#0ea5e9' : 'transparent', border: 'none', color: theme === 'dark' ? '#fcef7aff' : '#ffffffff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                        <Moon size={16} />
-                    </button>
-                    <button title="不透明白色" onClick={() => setTheme('light')} style={{ background: theme === 'light' ? '#0ea5e9' : 'transparent', border: 'none', color: theme === 'light' ? '#fcef7aff' : '#ffffffff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                        <Sun size={16} />
-                    </button>
-                </div>
+                {!propSetTheme && (
+                    <div style={{ position: 'absolute', top: '1rem', left: '1rem', zIndex: 5, background: 'rgba(0,0,0,0.5)', padding: '0.5rem', borderRadius: '2rem', display: 'flex', gap: '0.5rem' }}>
+                        <button title="夜間模式" onClick={() => setTheme('dark')} style={{ background: theme === 'dark' ? '#0ea5e9' : 'transparent', border: 'none', color: theme === 'dark' ? '#fcef7aff' : '#ffffffff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            <Moon size={16} />
+                        </button>
+                        <button title="日間模式" onClick={() => setTheme('light')} style={{ background: theme === 'light' ? '#0ea5e9' : 'transparent', border: 'none', color: theme === 'light' ? '#fcef7aff' : '#ffffffff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            <Sun size={16} />
+                        </button>
+                    </div>
+                )}
 
                 <svg ref={svgRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
             </div>

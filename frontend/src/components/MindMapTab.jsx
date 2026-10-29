@@ -4,7 +4,7 @@ import Loader from './Loader';
 import MindMapTree from './MindMapTree';
 import ColumnSelectionModal from './ColumnSelectionModal';
 import ClassificationSettingsModal from './ClassificationSettingsModal';
-import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp, BarChart2 } from 'lucide-react';
+import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp, BarChart2, Sun, Moon } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
 const SunburstView = lazy(() => import('./SunburstView'));
@@ -15,6 +15,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
   const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', 'lifecycle', or 'trend'
   const [hierarchyType, setHierarchyType] = useState('mindmap'); // 'mindmap' or 'sunburst'
+  const [treeTheme, setTreeTheme] = useState('light'); // default: light (day) mode for tree & sunburst
   const [showOtherCategories, setShowOtherCategories] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [fileInfo, setFileInfo] = useState(null);
@@ -1645,7 +1646,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
             </div>
 
             <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: viewMode === 'lifecycle' ? 'visible' : 'hidden', minHeight: viewMode === 'lifecycle' ? '880px' : '600px' }}>
-              {/* Requirement 1: Segmented control for Mindmap vs Sunburst inside graph area upper right */}
+              {/* Segmented control for Mindmap vs Sunburst and Day/Night Theme Switcher inside graph area upper right */}
               {viewMode === 'tree' && (
                 <div style={{
                   position: 'absolute',
@@ -1653,45 +1654,104 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                   right: '1rem',
                   zIndex: 20,
                   display: 'inline-flex',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  backdropFilter: 'blur(8px)',
-                  borderRadius: '0.6rem',
-                  padding: '3px',
-                  border: '1px solid rgba(14, 165, 233, 0.4)',
-                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+                  alignItems: 'center',
+                  gap: '0.5rem'
                 }}>
-                  <button
-                    onClick={() => setHierarchyType('mindmap')}
-                    style={{
-                      padding: '0.4rem 0.95rem',
-                      borderRadius: '0.45rem',
-                      background: hierarchyType === 'mindmap' ? '#0ea5e9' : 'transparent',
-                      border: 'none',
-                      color: hierarchyType === 'mindmap' ? '#ffffff' : '#94a3b8',
-                      fontWeight: 'bold',
-                      fontSize: '0.82rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    🌳 心智圖
-                  </button>
-                  <button
-                    onClick={() => setHierarchyType('sunburst')}
-                    style={{
-                      padding: '0.4rem 0.95rem',
-                      borderRadius: '0.45rem',
-                      background: hierarchyType === 'sunburst' ? '#0ea5e9' : 'transparent',
-                      border: 'none',
-                      color: hierarchyType === 'sunburst' ? '#ffffff' : '#94a3b8',
-                      fontWeight: 'bold',
-                      fontSize: '0.82rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    🍩 旭日圖
-                  </button>
+                  {/* Segmented control for Mindmap vs Sunburst */}
+                  <div style={{
+                    display: 'inline-flex',
+                    background: treeTheme === 'dark' ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.85)',
+                    backdropFilter: 'blur(8px)',
+                    borderRadius: '0.6rem',
+                    padding: '3px',
+                    border: `1px solid ${treeTheme === 'dark' ? 'rgba(14, 165, 233, 0.4)' : 'rgba(0, 0, 0, 0.12)'}`,
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.15)'
+                  }}>
+                    <button
+                      onClick={() => setHierarchyType('mindmap')}
+                      style={{
+                        padding: '0.4rem 0.95rem',
+                        borderRadius: '0.45rem',
+                        background: hierarchyType === 'mindmap' ? '#0ea5e9' : 'transparent',
+                        border: 'none',
+                        color: hierarchyType === 'mindmap' ? '#ffffff' : (treeTheme === 'dark' ? '#94a3b8' : '#64748b'),
+                        fontWeight: 'bold',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      🌳 心智圖
+                    </button>
+                    <button
+                      onClick={() => setHierarchyType('sunburst')}
+                      style={{
+                        padding: '0.4rem 0.95rem',
+                        borderRadius: '0.45rem',
+                        background: hierarchyType === 'sunburst' ? '#0ea5e9' : 'transparent',
+                        border: 'none',
+                        color: hierarchyType === 'sunburst' ? '#ffffff' : (treeTheme === 'dark' ? '#94a3b8' : '#64748b'),
+                        fontWeight: 'bold',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      🍩 旭日圖
+                    </button>
+                  </div>
+
+                  {/* Day/Night Theme Switcher (similar to Heatmap layout, located to the right) */}
+                  <div style={{
+                    background: treeTheme === 'dark' ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.85)',
+                    backdropFilter: 'blur(8px)',
+                    padding: '3px',
+                    borderRadius: '2rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.2rem',
+                    border: `1px solid ${treeTheme === 'dark' ? 'rgba(14, 165, 233, 0.4)' : 'rgba(0, 0, 0, 0.12)'}`,
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.15)'
+                  }}>
+                    <button
+                      title="夜間模式"
+                      onClick={() => setTreeTheme('dark')}
+                      style={{
+                        background: treeTheme === 'dark' ? '#0ea5e9' : 'transparent',
+                        border: 'none',
+                        color: treeTheme === 'dark' ? '#fcef7a' : (treeTheme === 'light' ? '#64748b' : '#ffffff'),
+                        borderRadius: '50%',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <Moon size={14} />
+                    </button>
+                    <button
+                      title="日間模式"
+                      onClick={() => setTreeTheme('light')}
+                      style={{
+                        background: treeTheme === 'light' ? '#0ea5e9' : 'transparent',
+                        border: 'none',
+                        color: treeTheme === 'light' ? '#fcef7a' : '#94a3b8',
+                        borderRadius: '50%',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <Sun size={14} />
+                    </button>
+                  </div>
                 </div>
               )}
               {/* Classification Hierarchy View: MindMap vs Sunburst */}
@@ -1704,6 +1764,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                   authState={authState}
                   showOtherCategories={showOtherCategories}
                   setShowOtherCategories={setShowOtherCategories}
+                  theme={treeTheme}
+                  setTheme={setTreeTheme}
                 />
               </div>
 
@@ -1716,6 +1778,8 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                     setShowOtherCategories={setShowOtherCategories}
                     onCaptureReady={(viewMode === 'tree' && hierarchyType === 'sunburst') ? setCaptureImage : undefined}
                     authState={authState}
+                    theme={treeTheme}
+                    setTheme={setTreeTheme}
                   />
                 </Suspense>
               </div>

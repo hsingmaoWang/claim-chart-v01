@@ -91,9 +91,13 @@ const SunburstView = ({
   showOtherCategories = true,
   setShowOtherCategories,
   onCaptureReady,
-  authState
+  authState,
+  theme: propTheme,
+  setTheme: propSetTheme
 }) => {
-  const [theme, setTheme] = useState('light'); // default: light (day) mode
+  const [localTheme, setLocalTheme] = useState('light');
+  const theme = propTheme !== undefined ? propTheme : localTheme;
+  const setTheme = propSetTheme || setLocalTheme;
   const [selectedNodePatents, setSelectedNodePatents] = useState(null);
   const [maxDepth, setMaxDepth] = useState(3); // 0 means show all levels; 3 means show 3 levels
   const containerRef = useRef(null);
@@ -527,61 +531,63 @@ const SunburstView = ({
         justifyContent: 'center',
         border: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'}`
       }}>
-        {/* Theme Switcher */}
-        <div style={{
-          position: 'absolute',
-          top: '1rem',
-          left: '1rem',
-          zIndex: 5,
-          background: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.06)',
-          padding: '2px',
-          borderRadius: '2rem',
-          display: 'flex',
-          gap: '0.2rem',
-          border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
-        }}>
-          <button
-            title="夜間模式"
-            onClick={() => setTheme('dark')}
-            style={{
-              background: theme === 'dark' ? '#0ea5e9' : 'transparent',
-              border: 'none',
-              color: theme === 'dark' ? '#fcef7aff' : '#ffffffff',
-              borderRadius: '50%',
-              width: '28px',
-              height: '28px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <Moon size={14} />
-          </button>
-          <button
-            title="日間模式"
-            onClick={() => setTheme('light')}
-            style={{
-              background: theme === 'light' ? '#0ea5e9' : 'transparent',
-              border: 'none',
-              color: theme === 'light' ? '#fcef7aff' : '#ffffffff',
-              borderRadius: '50%',
-              width: '28px',
-              height: '28px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <Sun size={14} />
-          </button>
-        </div>
+        {/* Theme Switcher (only show if not controlled from parent) */}
+        {!propSetTheme && (
+          <div style={{
+            position: 'absolute',
+            top: '1rem',
+            left: '1rem',
+            zIndex: 5,
+            background: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.06)',
+            padding: '2px',
+            borderRadius: '2rem',
+            display: 'flex',
+            gap: '0.2rem',
+            border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
+          }}>
+            <button
+              title="夜間模式"
+              onClick={() => setTheme('dark')}
+              style={{
+                background: theme === 'dark' ? '#0ea5e9' : 'transparent',
+                border: 'none',
+                color: theme === 'dark' ? '#fcef7aff' : '#ffffffff',
+                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <Moon size={14} />
+            </button>
+            <button
+              title="日間模式"
+              onClick={() => setTheme('light')}
+              style={{
+                background: theme === 'light' ? '#0ea5e9' : 'transparent',
+                border: 'none',
+                color: theme === 'light' ? '#fcef7aff' : '#ffffffff',
+                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <Sun size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Requirement 4: Total Patent Count Stat Card at Top-Left */}
         <div style={{
           position: 'absolute',
-          top: '3.6rem',
+          top: propSetTheme ? '1rem' : '3.6rem',
           left: '1rem',
           zIndex: 5,
           background: theme === 'dark' ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
