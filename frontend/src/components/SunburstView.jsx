@@ -93,7 +93,7 @@ const SunburstView = ({
   onCaptureReady,
   authState
 }) => {
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState('light'); // default: light (day) mode
   const [selectedNodePatents, setSelectedNodePatents] = useState(null);
   const [maxDepth, setMaxDepth] = useState(3); // 0 means show all levels; 3 means show 3 levels
   const containerRef = useRef(null);

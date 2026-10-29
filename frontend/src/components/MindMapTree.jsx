@@ -141,7 +141,7 @@ const MindMapTree = ({ treeData, levelHierarchy, setLevelHierarchy, onCaptureRea
     const svgRef = useRef(null);
     const markmapRef = useRef(null);
     const [selectedPatents, setSelectedPatents] = useState(null);
-    const [theme, setTheme] = useState('dark');
+    const [theme, setTheme] = useState('light'); // default: light (day) mode
 
     const handleDragEnd = (event) => {
         const { active, over } = event;

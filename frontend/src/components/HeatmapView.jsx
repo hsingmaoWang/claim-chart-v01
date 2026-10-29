@@ -460,7 +460,7 @@ const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform }) => {
 
 // ─── Main HeatmapView component ───────────────────────────────────────────────
 const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState('light'); // default: light (day) mode
   const [chartType, setChartType] = useState('heatmap'); // 'heatmap' | 'bubble'
   const heatmapContainerRef = useRef(null);
 
