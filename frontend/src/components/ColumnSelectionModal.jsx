@@ -67,8 +67,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(15, 23, 42, 0.6)',
-      backdropFilter: 'blur(4px)',
+      backgroundColor: 'transparent',
+      backdropFilter: 'none',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -79,7 +79,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
         backgroundColor: '#80bce1ff',
         border: '1px solid rgba(5, 100, 177, 0.1)',
         borderRadius: '16px',
-        width: '950px',
+        width: '820px',
         maxWidth: '92vw',
         maxHeight: '85vh',
         display: 'flex',
@@ -136,7 +136,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
             {patent_processing && (
               <div style={{
                 marginTop: '10px',
-                width: '100%',
+                width: '90%',
                 boxSizing: 'border-box',
                 padding: '10px 14px',
                 borderRadius: '10px',
