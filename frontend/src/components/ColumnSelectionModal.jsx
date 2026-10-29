@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Lock, CheckSquare, Square, Sparkles, FileSpreadsheet, Check, Info, Layers, RefreshCw } from 'lucide-react';
 
 const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
@@ -59,27 +60,27 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
     onConfirm(finalSelected, enableScreening);
   };
 
-  return (
+  const modalContent = (
     <div style={{
       position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'transparent',
-      backdropFilter: 'none',
+      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+      backdropFilter: 'blur(4px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000,
+      zIndex: 9999,
       padding: '20px'
     }}>
       <div style={{
         backgroundColor: '#80bce1ff',
         border: '1px solid rgba(5, 100, 177, 0.1)',
         borderRadius: '16px',
-        width: '100%',
-        maxWidth: '950px',
+        width: '950px',
+        maxWidth: '92vw',
         maxHeight: '85vh',
         display: 'flex',
         flexDirection: 'column',
@@ -378,7 +379,7 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
                 gap: '10px',
-                maxHeight: '220px',
+                maxHeight: '280px',
                 overflowY: 'auto',
                 padding: '4px'
               }}>
@@ -521,6 +522,8 @@ const ColumnSelectionModal = ({ isOpen, onClose, onConfirm, columnData }) => {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
 
 export default ColumnSelectionModal;
