@@ -10,10 +10,11 @@ const HeatmapView = lazy(() => import('./HeatmapView'));
 const SunburstView = lazy(() => import('./SunburstView'));
 const LifeCycleChart = lazy(() => import('./LifeCycleChart'));
 const PatentTrendChart = lazy(() => import('./PatentTrendChart'));
+const IpcCirclePackingChart = lazy(() => import('./IpcCirclePackingChart'));
 
 const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
-  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', 'lifecycle', or 'trend'
+  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', 'lifecycle', 'trend', or 'ipc'
   const [hierarchyType, setHierarchyType] = useState('mindmap'); // 'mindmap' or 'sunburst'
   const [treeTheme, setTreeTheme] = useState('light'); // default: light (day) mode for tree & sunburst
   const [showOtherCategories, setShowOtherCategories] = useState(true);
@@ -1605,6 +1606,26 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                   技術生命週期圖
                 </button>
                 <button
+                  onClick={() => setViewMode('ipc')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: '0.4rem',
+                    background: viewMode === 'ipc' ? 'rgba(82, 152, 245, 1)' : 'rgba(144, 212, 226, 1)',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Layers size={14} />
+                  IPC分類圖
+                </button>
+                <button
                   onClick={() => setViewMode('tree')}
                   style={{
                     padding: '0.4rem 1rem',
@@ -1645,7 +1666,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               </div>
             </div>
 
-            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: viewMode === 'lifecycle' ? 'visible' : 'hidden', minHeight: viewMode === 'lifecycle' ? '880px' : '600px' }}>
+            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: (viewMode === 'lifecycle' || viewMode === 'ipc') ? 'visible' : 'hidden', minHeight: (viewMode === 'lifecycle' || viewMode === 'ipc') ? '880px' : '600px' }}>
               {/* Segmented control for Mindmap vs Sunburst and Day/Night Theme Switcher inside graph area upper right */}
               {viewMode === 'tree' && (
                 <div style={{
@@ -1793,6 +1814,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               <div style={{ display: viewMode === 'lifecycle' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入技術生命週期圖...</div>}>
                   <LifeCycleChart treeData={treeData} onCaptureReady={viewMode === 'lifecycle' ? setCaptureImage : undefined} authState={authState} />
+                </Suspense>
+              </div>
+
+              <div style={{ display: viewMode === 'ipc' ? 'block' : 'none', width: '100%', height: '100%' }}>
+                <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入 IPC 分類圖...</div>}>
+                  <IpcCirclePackingChart treeData={treeData} onCaptureReady={viewMode === 'ipc' ? setCaptureImage : undefined} authState={authState} />
                 </Suspense>
               </div>
 

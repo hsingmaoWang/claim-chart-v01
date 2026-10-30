@@ -700,7 +700,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
   // Coolwarm colorscale
   const coolwarmScale = [
-    [0.0, '#40b4fdff'],
+    [0.0, '#c6fafbff'],
+    [0.0001, '#40b4fdff'],
     [0.25, '#50ede3ff'],
     [0.5, '#fbde05ff'],
     [0.75, '#f4a582'],

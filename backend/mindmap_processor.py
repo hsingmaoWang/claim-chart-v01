@@ -5,7 +5,7 @@ import uuid
 import pandas as pd
 import re
 from collections import Counter
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -2321,4 +2321,23 @@ async def export_mindmap_excel(data: dict, x_session_id: str = Header(default=""
 
     return FileResponse(path=out_path, filename=out_filename,
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+class IpcLookupRequest(BaseModel):
+    ipc_codes: List[str]
+
+
+@router.post("/api/mindmap/ipc_lookup")
+async def ipc_lookup_endpoint(req: IpcLookupRequest):
+    """
+    Lookup IPC descriptions and 5-tier full hierarchical definitions
+    for a list of IPC subgroup codes.
+    """
+    try:
+        from ipc_service import lookup_ipc_definitions
+        result = lookup_ipc_definitions(req.ipc_codes)
+        return result
+    except Exception as e:
+        logger.error(f"IPC lookup failed: {e}")
+        raise HTTPException(status_code=500, detail=f"IPC 定義查詢失敗: {str(e)}")
 
