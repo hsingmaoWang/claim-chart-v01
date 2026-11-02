@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
-import { Sun, Moon, FileText, RotateCcw, ChevronRight, Layers, Info, Award } from 'lucide-react';
+import { Sun, Moon, FileText, RotateCcw, ChevronRight, Layers, Info, Award, AlertCircle, AlertTriangle } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 // IPC 八大部主題色彩系統（日間 / 夜間模式分開調配）
@@ -137,7 +137,7 @@ function parseIpcCode(rawCode) {
   };
 }
 
-const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
+const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStatsReady }) => {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const [theme, setTheme] = useState('light'); // 'light' | 'dark'
@@ -192,16 +192,46 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
   }, [rawPatents, totalPieces]);
 
   // 2. 依專利清單建構 5 階層巢狀樹狀結構 & 計算第 4 階 (Main Group 主目) 佔比 Top 5
-  const { hierarchyRoot, uniqueIpcCodes, top5MainGroups } = useMemo(() => {
-    if (!rawPatents.length) return { hierarchyRoot: null, uniqueIpcCodes: [], top5MainGroups: [] };
+  // 規範：僅接受 "IPC Subgroup" 欄位，不採用其他欄位。若無 "IPC Subgroup" 欄位，則顯示來源資料缺乏"IPC Subgroup"欄位錯誤訊息
+  const { hierarchyRoot, uniqueIpcCodes, top5MainGroups, allMainGroups, hasIpcSubgroupCol, ipcColName } = useMemo(() => {
+    if (!rawPatents.length) {
+      return {
+        hierarchyRoot: null,
+        uniqueIpcCodes: [],
+        top5MainGroups: [],
+        hasIpcSubgroupCol: false,
+        ipcColName: null
+      };
+    }
 
-    const sample = rawPatents[0] || {};
-    let ipcCol = Object.keys(sample).find(k => {
-      const lower = k.toLowerCase().trim();
-      return lower.includes('ipc') && lower.includes('subgroup');
-    });
+    // 嚴格比對：僅接受 "IPC Subgroup" 欄位（忽略大小寫、空白、底線、破折號，例如 "IPC Subgroup", "ipc subgroup", "IPC_Subgroup"）
+    // 嚴禁 fallback 至其他含有 "ipc" 的欄位 (如 "IPC", "IPC Class", "IPC Main Group" 等)
+    const isIpcSubgroupKey = (k) => {
+      const norm = String(k || '').trim().toLowerCase().replace(/[\s_\-]+/g, ' ');
+      return norm === 'ipc subgroup' || norm === 'ipc sub group';
+    };
+
+    let ipcCol = null;
+    for (let i = 0; i < Math.min(rawPatents.length, 20); i++) {
+      const p = rawPatents[i];
+      if (p && typeof p === 'object') {
+        const found = Object.keys(p).find(isIpcSubgroupKey);
+        if (found) {
+          ipcCol = found;
+          break;
+        }
+      }
+    }
+
     if (!ipcCol) {
-      ipcCol = Object.keys(sample).find(k => k.toLowerCase().includes('ipc'));
+      return {
+        hierarchyRoot: null,
+        uniqueIpcCodes: [],
+        top5MainGroups: [],
+        allMainGroups: [],
+        hasIpcSubgroupCol: false,
+        ipcColName: null
+      };
     }
 
     const sectionMap = new Map();
@@ -321,13 +351,15 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
       });
     });
 
-    const top5MainGroups = mainGroupList
-      .sort((a, b) => b.count - a.count)
+    const sortedMainGroups = [...mainGroupList].sort((a, b) => b.count - a.count);
+    const top5MainGroups = sortedMainGroups
       .slice(0, 5)
       .map((item, idx) => ({
         ...item,
         rank: idx + 1
       }));
+    // 保留全部已排序的主目清單供 Excel 匯出使用
+    const allMainGroups = sortedMainGroups;
 
     // 轉換成 D3 hierarchy 格式
     const children = [];
@@ -422,9 +454,42 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
     return {
       hierarchyRoot: root,
       uniqueIpcCodes: Array.from(codeCollector),
-      top5MainGroups
+      top5MainGroups,
+      allMainGroups,
+      hasIpcSubgroupCol: true,
+      ipcColName: ipcCol
     };
   }, [rawPatents, totalPieces]);
+
+  // 取得目前來源專利清單中包含的所有欄位名稱（供錯誤提示時列出）
+  const availableColumns = useMemo(() => {
+    if (!rawPatents.length) return [];
+    const keys = new Set();
+    for (let i = 0; i < Math.min(rawPatents.length, 10); i++) {
+      if (rawPatents[i] && typeof rawPatents[i] === 'object') {
+        Object.keys(rawPatents[i]).forEach(k => keys.add(k));
+      }
+    }
+    return Array.from(keys);
+  }, [rawPatents]);
+
+  // 若上傳了專利資料但缺乏 "IPC Subgroup" 欄位，標記錯誤狀態
+  const isMissingIpcSubgroup = rawPatents.length > 0 && !hasIpcSubgroupCol;
+
+  // 當主目統計或 IPC 中文定義就緒時，通知父元件供 Excel 匯出使用
+  // 使用 useRef 儲存最新值，避免每次 definitions/fullPaths state 更新都觸發父元件 re-render
+  // （若用 setIpcStats 直接作為 callback，會造成 MindMapTab re-render → Suspense 閃爍 → 圖消失）
+  const ipcStatsCallbackRef = useRef(null);
+  ipcStatsCallbackRef.current = onIpcStatsReady;
+
+  useEffect(() => {
+    if (!allMainGroups || allMainGroups.length === 0) return;
+    const cb = ipcStatsCallbackRef.current;
+    if (!cb) return;
+    cb({ allMainGroups, definitions, fullPaths, totalPieces });
+    // 只在 definitions/fullPaths 真正載入後才通知一次（避免呼叫兩次）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMainGroups, definitions, fullPaths]);
 
   // 3. 向後端查詢 IPC 中文定義 (雙保險機制：支援 API 查詢與本機 public/data/ipc_dict.json 靜態備份)
   useEffect(() => {
@@ -928,13 +993,13 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
       >
         {/* 左側：統計母體資訊 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#38bdf8' : '#0369a1', fontSize: '0.88rem', fontWeight: 600 }}>
-            <FileText size={16} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#38bdf8' : '#0369a1', fontSize: '1.0rem', fontWeight: 600 }}>
+            <FileText size={18} />
             <span>統計母體：{totalCases} 專利家族案 (INPADOC Family) / {totalPieces} 專利件數 (公開公告合併後)</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#a78bfa' : '#6366f1', fontSize: '0.88rem', fontWeight: 600 }}>
-            <Layers size={16} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: isDark ? '#a78bfa' : '#6366f1', fontSize: '1.0rem', fontWeight: 600 }}>
+            <Layers size={18} />
             <span>IPC 互動 5 階層圓形樹狀圖 (Circle Packing)</span>
           </div>
         </div>
@@ -951,7 +1016,7 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
                 padding: '0.35rem 0.75rem',
                 borderRadius: '0.4rem',
                 border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #cbd5e1',
-                background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#ffffff',
+                background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#ffffffff',
                 color: isDark ? '#38bdf8' : '#0284c7',
                 fontSize: '0.8rem',
                 fontWeight: 600,
@@ -1019,161 +1084,288 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState }) => {
         </div>
       </div>
 
-      {/* 互動操作說明與麵包屑導航 */}
-      <div
-        style={{
-          padding: '0.5rem 1.25rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          fontSize: '0.82rem',
-          color: isDark ? '#94a3b8' : '#64748b',
-          borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9'}`
-        }}
-      >
-        {/* 麵包屑路徑 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-          <span
-            onClick={() => svgRef.current?.__resetZoom && svgRef.current.__resetZoom()}
-            style={{ cursor: 'pointer', color: isDark ? '#38bdf8' : '#0284c7', fontWeight: 600 }}
+      {/* 圖表主要內容區：若缺乏 IPC Subgroup 欄位則呈現明確錯誤提示 */}
+      {isMissingIpcSubgroup ? (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '3rem 1.5rem',
+            minHeight: '700px'
+          }}
+        >
+          <div
+            style={{
+              maxWidth: '640px',
+              width: '100%',
+              background: isDark ? 'rgba(30, 41, 59, 0.85)' : '#ffffff',
+              border: isDark ? '1.5px solid rgba(239, 68, 68, 0.45)' : '1.5px solid #fecaca',
+              borderRadius: '1.25rem',
+              padding: '2.5rem 2rem',
+              textAlign: 'center',
+              boxShadow: isDark
+                ? '0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 30px rgba(239, 68, 68, 0.2)'
+                : '0 20px 35px -10px rgba(239, 68, 68, 0.15), 0 2px 8px rgba(0, 0, 0, 0.05)',
+              backdropFilter: 'blur(12px)'
+            }}
           >
-            IPC 八大部別 (總覽)
-          </span>
-          {breadcrumbList.map((nodeItem, idx) => (
-            <React.Fragment key={idx}>
-              <ChevronRight size={13} style={{ opacity: 0.6 }} />
-              <span
-                onClick={() => svgRef.current?.__zoomTo && svgRef.current.__zoomTo(nodeItem)}
-                style={{
-                  cursor: 'pointer',
-                  color: idx === breadcrumbList.length - 1 ? (isDark ? '#f1f5f9' : '#0f172a') : (isDark ? '#38bdf8' : '#0284c7'),
-                  fontWeight: idx === breadcrumbList.length - 1 ? 700 : 500
-                }}
-              >
-                {nodeItem.data.name} {getResolvedDesc(nodeItem.data.name, nodeItem.data.code) ? `(${getResolvedDesc(nodeItem.data.name, nodeItem.data.code).substring(0, 8)}...)` : ''}
-              </span>
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* 操作提示小語 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', opacity: 0.9 }}>
-          <Info size={13} />
-          <span>滾輪縮放畫布；點擊展開下階(佔75%)；金黃邊框為 Top 5 主目 (第4階)</span>
-        </div>
-      </div>
-
-      {/* SVG 圖表主體 */}
-      <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: '720px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg ref={svgRef} />
-
-        {/* 懸浮視窗 (Tooltip) - 使用 Portal 貼齊游標 */}
-        {typeof document !== 'undefined' &&
-          tooltip.visible &&
-          tooltip.data &&
-          createPortal(
             <div
               style={{
-                position: 'fixed',
-                left: `${Math.min(tooltip.x + 14, window.innerWidth - 390)}px`,
-                top: `${Math.min(tooltip.y + 14, window.innerHeight - 280)}px`,
-                pointerEvents: 'none',
-                zIndex: 99999,
-                background: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
-                color: isDark ? '#f8fafc' : '#0f172a',
-                border: `1.5px solid ${isDark ? 'rgba(56, 189, 248, 0.5)' : 'rgba(2, 132, 199, 0.35)'}`,
-                borderRadius: '0.75rem',
-                padding: '0.85rem 1.15rem',
-                maxWidth: '380px',
-                boxShadow: isDark ? '0 12px 30px rgba(0,0,0,0.7)' : '0 12px 30px rgba(0,0,0,0.15)',
-                backdropFilter: 'blur(12px)',
-                fontSize: '0.85rem',
-                lineHeight: '1.45'
+                width: '72px',
+                height: '72px',
+                borderRadius: '50%',
+                background: isDark ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2',
+                color: '#ef4444',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem auto'
               }}
             >
-              {/* 頂部階層徽章與件數佔比 */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.5rem' }}>
-                <span
-                  style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    padding: '0.15rem 0.55rem',
-                    borderRadius: '999px',
-                    background: isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(2, 132, 199, 0.12)',
-                    color: isDark ? '#38bdf8' : '#0284c7'
-                  }}
-                >
-                  第 {tooltip.data.level} 階：{tooltip.data.levelName}
-                </span>
+              <AlertCircle size={40} strokeWidth={2.2} />
+            </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  {tooltip.data.top5Info && (
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.15rem',
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        color: '#f59e0b',
-                        background: 'rgba(245, 158, 11, 0.15)',
-                        padding: '0.1rem 0.4rem',
-                        borderRadius: '0.25rem'
-                      }}
-                    >
-                      <Award size={11} />
-                      Top #{tooltip.data.top5Info.rank} 主目
-                    </span>
-                  )}
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b' }}>
-                    {tooltip.data.count} 件 ({tooltip.data.percent}%)
-                  </span>
-                </div>
+            <h3
+              style={{
+                fontSize: '1.4rem',
+                fontWeight: 800,
+                color: isDark ? '#f87171' : '#dc2626',
+                marginBottom: '0.85rem',
+                letterSpacing: '0.02em'
+              }}
+            >
+              來源資料缺乏"IPC Subgroup"欄位
+            </h3>
+
+            <p
+              style={{
+                fontSize: '0.92rem',
+                color: isDark ? '#cbd5e1' : '#475569',
+                lineHeight: 1.65,
+                marginBottom: '1.5rem',
+                textAlign: 'left'
+              }}
+            >
+              為使IPC 分類圖統計正確，僅接受<strong> "IPC Subgroup" </strong>欄位進行解析，不採用其他欄位（例如 IPC - Current、IPC Class 等）。目前來源資料中未偵測到該欄位名稱。
+            </p>
+
+            <div
+              style={{
+                background: isDark ? 'rgba(15, 23, 42, 0.65)' : '#f8fafc',
+                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'}`,
+                borderRadius: '0.75rem',
+                padding: '1.1rem 1.25rem',
+                textAlign: 'left',
+                fontSize: '0.84rem',
+                color: isDark ? '#94a3b8' : '#64748b',
+                lineHeight: 1.6
+              }}
+            >
+              <div style={{ fontWeight: 600, color: isDark ? '#e2e8f0' : '#334155', marginBottom: '0.4rem' }}>
+                💡 建議排解方式：
               </div>
-
-              {/* 核心主角：分類代碼與本階分類定義文字敘述 */}
-              <div style={{ marginBottom: '0.4rem' }}>
-                <div style={{ fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
-                  分類代碼：<span style={{ color: isDark ? '#38bdf8' : '#0284c7', fontWeight: 800 }}>{tooltip.data.name}</span>
-                </div>
-                <div
-                  style={{
-                    fontWeight: 800,
-                    fontSize: '1rem',
-                    marginTop: '0.2rem',
-                    color: isDark ? '#f1f5f9' : '#0f172a',
-                    lineHeight: '1.35'
-                  }}
-                >
-                  {tooltip.data.curDesc || '(查無中文定義)'}
-                </div>
-              </div>
-
-              {/* 上下階層完整定義脈絡串接 */}
-              {tooltip.data.fullDesc && (
-                <div
-                  style={{
-                    marginTop: '0.45rem',
-                    paddingTop: '0.45rem',
-                    borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
-                    fontSize: '0.76rem',
-                    color: isDark ? '#94a3b8' : '#64748b'
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: '0.25rem', color: isDark ? '#38bdf8' : '#0369a1' }}>
-                    層級完整定義脈絡：
-                  </div>
-                  <div style={{ wordBreak: 'break-word', lineHeight: '1.4', opacity: 0.95 }}>
-                    {tooltip.data.fullDesc}
+              <ul style={{ margin: '0 0 0.85rem 0', paddingLeft: '1.2rem' }}>
+                <li>確認匯出的原始專利清單 Excel 檔案是否包含標題為 <strong>IPC Subgroup</strong> 的欄位。</li>
+                <li>若上傳時曾開啟「欄位選取」視窗，請確保 <strong>IPC Subgroup</strong> 欄位有勾選保留。</li>
+                <li>若仍要以來源檔案其他欄位進行 IPC 分類統計，請先將其更名為 <strong>IPC Subgroup</strong> 後重新上傳。</li>
+              </ul>
+              {availableColumns.length > 0 && (
+                <div style={{ borderTop: `1px dashed ${isDark ? 'rgba(255,255,255,0.1)' : '#cbd5e1'}`, paddingTop: '0.65rem' }}>
+                  <span style={{ fontWeight: 600, color: isDark ? '#cbd5e1' : '#475569' }}>現有來源欄位：</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                    {availableColumns.map((c, i) => (
+                      <span key={i} style={{
+                        fontSize: '0.75rem',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: isDark ? 'rgba(255,255,255,0.06)' : '#e2e8f0',
+                        color: isDark ? '#94a3b8' : '#475569'
+                      }}>
+                        {c}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
-            </div>,
-            document.body
-          )}
-      </div>
+            </div>
+          </div>
+        </div>
+      ) : !hierarchyRoot ? (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '3rem 1.5rem',
+            minHeight: '700px',
+            color: isDark ? '#94a3b8' : '#64748b',
+            fontSize: '0.95rem'
+          }}
+        >
+          {rawPatents.length === 0 ? '尚未載入專利資料，請先上傳專利 Excel 檔案。' : '「IPC Subgroup」欄位中未包含有效的專利分類代碼資料。'}
+        </div>
+      ) : (
+        <>
+          {/* 互動操作說明與麵包屑導航 */}
+          <div
+            style={{
+              padding: '0.5rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              fontSize: '1.0rem',
+              color: isDark ? '#94a3b8' : '#64748b',
+              borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9'}`
+            }}
+          >
+            {/* 麵包屑路徑 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <span
+                onClick={() => svgRef.current?.__resetZoom && svgRef.current.__resetZoom()}
+                style={{ cursor: 'pointer', color: isDark ? '#38bdf8' : '#0284c7', fontWeight: 600 }}
+              >
+                IPC 八大部別 (總覽)
+              </span>
+              {breadcrumbList.map((nodeItem, idx) => (
+                <React.Fragment key={idx}>
+                  <ChevronRight size={15} style={{ opacity: 0.6 }} />
+                  <span
+                    onClick={() => svgRef.current?.__zoomTo && svgRef.current.__zoomTo(nodeItem)}
+                    style={{
+                      cursor: 'pointer',
+                      color: idx === breadcrumbList.length - 1 ? (isDark ? '#f1f5f9' : '#0f172a') : (isDark ? '#38bdf8' : '#0284c7'),
+                      fontWeight: idx === breadcrumbList.length - 1 ? 700 : 500
+                    }}
+                  >
+                    {nodeItem.data.name} {getResolvedDesc(nodeItem.data.name, nodeItem.data.code) ? `(${getResolvedDesc(nodeItem.data.name, nodeItem.data.code).substring(0, 8)}...)` : ''}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* 操作提示小語 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', opacity: 0.9 }}>
+              <Info size={14} />
+              <span>滾輪縮放畫布；點擊圓圈聚焦；點擊空白回到上階；金黃邊框為主目 (第4階) Top 5 </span>
+            </div>
+          </div>
+
+          {/* SVG 圖表主體 */}
+          <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: '720px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg ref={svgRef} />
+
+            {/* 懸浮視窗 (Tooltip) - 使用 Portal 貼齊游標 */}
+            {typeof document !== 'undefined' &&
+              tooltip.visible &&
+              tooltip.data &&
+              createPortal(
+                <div
+                  style={{
+                    position: 'fixed',
+                    left: `${Math.min(tooltip.x + 14, window.innerWidth - 390)}px`,
+                    top: `${Math.min(tooltip.y + 14, window.innerHeight - 280)}px`,
+                    pointerEvents: 'none',
+                    zIndex: 99999,
+                    background: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
+                    color: isDark ? '#f8fafc' : '#0f172a',
+                    border: `1.5px solid ${isDark ? 'rgba(56, 189, 248, 0.5)' : 'rgba(2, 132, 199, 0.35)'}`,
+                    borderRadius: '0.75rem',
+                    padding: '0.85rem 1.15rem',
+                    maxWidth: '380px',
+                    boxShadow: isDark ? '0 12px 30px rgba(0,0,0,0.7)' : '0 12px 30px rgba(0,0,0,0.15)',
+                    backdropFilter: 'blur(12px)',
+                    fontSize: '0.85rem',
+                    lineHeight: '1.45'
+                  }}
+                >
+                  {/* 頂部階層徽章與件數佔比 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.5rem' }}>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.15rem 0.55rem',
+                        borderRadius: '999px',
+                        background: isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(2, 132, 199, 0.12)',
+                        color: isDark ? '#38bdf8' : '#0284c7'
+                      }}
+                    >
+                      第 {tooltip.data.level} 階：{tooltip.data.levelName}
+                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      {tooltip.data.top5Info && (
+                        <span
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.15rem',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            color: '#f59e0b',
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '0.25rem'
+                          }}
+                        >
+                          <Award size={11} />
+                          Top #{tooltip.data.top5Info.rank} 主目
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b' }}>
+                        {tooltip.data.count} 件 ({tooltip.data.percent}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 核心主角：分類代碼與本階分類定義文字敘述 */}
+                  <div style={{ marginBottom: '0.4rem' }}>
+                    <div style={{ fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
+                      分類代碼：<span style={{ color: isDark ? '#38bdf8' : '#0284c7', fontWeight: 800 }}>{tooltip.data.name}</span>
+                    </div>
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        fontSize: '1rem',
+                        marginTop: '0.2rem',
+                        color: isDark ? '#f1f5f9' : '#0f172a',
+                        lineHeight: '1.35'
+                      }}
+                    >
+                      {tooltip.data.curDesc || '(查無中文定義)'}
+                    </div>
+                  </div>
+
+                  {/* 上下階層完整定義脈絡串接 */}
+                  {tooltip.data.fullDesc && (
+                    <div
+                      style={{
+                        marginTop: '0.45rem',
+                        paddingTop: '0.45rem',
+                        borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                        fontSize: '0.76rem',
+                        color: isDark ? '#94a3b8' : '#64748b'
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, marginBottom: '0.25rem', color: isDark ? '#38bdf8' : '#0369a1' }}>
+                        層級完整定義脈絡：
+                      </div>
+                      <div style={{ wordBreak: 'break-word', lineHeight: '1.4', opacity: 0.95 }}>
+                        {tooltip.data.fullDesc}
+                      </div>
+                    </div>
+                  )}
+                </div>,
+                document.body
+              )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

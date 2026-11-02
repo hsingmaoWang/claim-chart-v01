@@ -1196,7 +1196,7 @@ def classify_excel_columns(df):
     selectable_cols = [c for c in all_cols if c not in ai_cols and c not in required_cols]
     
     # 推薦欄位 (智慧預先打勾的分析欄位)
-    rec_keywords = ["年", "人", "分類", "國", "date", "year", "applicant", "assignee", "ipc", "cpc", "country", "family id"]
+    rec_keywords = ["年", "人", "分類", "國", "date", "year", "applicant", "assignee", "ipc subgroup", "cpc", "country", "family id"]
     recommended_cols = [c for c in selectable_cols if any(k in c.lower() for k in rec_keywords)]
     
     return {
@@ -2293,31 +2293,136 @@ async def export_mindmap_excel(data: dict, x_session_id: str = Header(default=""
             })
             
     df_defs = pd.DataFrame(def_rows)
-    
+
+    # 解析前端回傳之 IPC 分類統計（第 4 階 Main Group 完整清單）
+    ipc_stats = data.get("ipc_stats", {})
+    ipc_all_main_groups = ipc_stats.get("allMainGroups", []) if isinstance(ipc_stats, dict) else []
+    ipc_definitions = ipc_stats.get("definitions", {}) if isinstance(ipc_stats, dict) else {}
+    ipc_full_paths = ipc_stats.get("fullPaths", {}) if isinstance(ipc_stats, dict) else {}
+
+    # 若有部分主目缺少定義或完整脈絡，後端自動調用 lookup_ipc_definitions 進行雙保險補齊
+    missing_codes = [
+        item.get("name") or item.get("code")
+        for item in ipc_all_main_groups
+        if (item.get("name") or item.get("code")) and (
+            not (ipc_definitions.get(item.get("code")) or ipc_definitions.get(item.get("name"))) or
+            not (ipc_full_paths.get(item.get("code")) or ipc_full_paths.get(item.get("name")))
+        )
+    ]
+    if missing_codes:
+        try:
+            from ipc_service import lookup_ipc_definitions
+            backend_res = lookup_ipc_definitions(missing_codes)
+            if backend_res.get("definitions"):
+                ipc_definitions = {**backend_res["definitions"], **ipc_definitions}
+            if backend_res.get("full_paths"):
+                ipc_full_paths = {**backend_res["full_paths"], **ipc_full_paths}
+        except Exception as e:
+            logger.warning(f"Backend IPC fallback enrichment failed: {e}")
+
+    # 建立 IPC 分類工作表列資料
+    ipc_rows = []
+    for item in ipc_all_main_groups:
+        code = item.get("code", "")
+        name = item.get("name", code)
+        count = item.get("count", 0)
+        percent = item.get("percent", "0.0")
+
+        # 從 definitions 取中文定義（多種鍵值格式相容）
+        ch_def = (
+            ipc_definitions.get(code) or
+            ipc_definitions.get(name) or
+            ""
+        )
+
+        # 從 fullPaths 取層級完整脈絡
+        full_path = (
+            ipc_full_paths.get(code) or
+            ipc_full_paths.get(name) or
+            ""
+        )
+
+        ipc_rows.append({
+            "4階IPC分類號": name,
+            "專利件數": int(count) if str(count).isdigit() else count,
+            "百分比%": float(percent) if str(percent).replace(".", "", 1).isdigit() else percent,
+            "中文定義": ch_def,
+            "層級完整定義脈絡": full_path,
+        })
+
+    df_ipc = pd.DataFrame(ipc_rows) if ipc_rows else pd.DataFrame()
+
     name, _ = os.path.splitext(original_filename)
     out_filename = f"{name}_分類結果.xlsx"
     temp_dir = os.path.join(tempfile.gettempdir(), "mindmap_export")
     os.makedirs(temp_dir, exist_ok=True)
     out_path = os.path.join(temp_dir, out_filename)
-    
+
     with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
         df_out.to_excel(writer, sheet_name="專利映射結果", index=False)
         if not df_defs.empty:
             df_defs.to_excel(writer, sheet_name="分類標籤定義", index=False)
+        if not df_ipc.empty:
+            df_ipc.to_excel(writer, sheet_name="IPC分類", index=False)
 
-    # 將 summary_title 寫入「分類標籤定義」工作表的 E1 儲存格
-    summary_title_val = data.get("summary_title") or stage1_taxonomy.get("summary_title", "")
-    if summary_title_val:
-        try:
-            from openpyxl import load_workbook
-            wb = load_workbook(out_path)
-            ws = wb["分類標籤定義"]
-            ws["E1"] = summary_title_val
-            wb.save(out_path)
-        except Exception as e:
-            logger.warning(f"Failed to write summary_title to E1: {e}")
+    # 後處理：使用 openpyxl 進行欄位調整與 summary_title 寫入
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
 
+        wb = load_workbook(out_path)
 
+        # 寫入 summary_title 至「分類標籤定義」E1
+        summary_title_val = data.get("summary_title") or stage1_taxonomy.get("summary_title", "")
+        if summary_title_val and "分類標籤定義" in wb.sheetnames:
+            ws_def = wb["分類標籤定義"]
+            ws_def["E1"] = summary_title_val
+
+        # 美化「IPC分類」工作表
+        if "IPC分類" in wb.sheetnames:
+            ws_ipc = wb["IPC分類"]
+
+            # 標題列樣式
+            header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF", size=11)
+            thin_border = Border(
+                left=Side(style='thin', color='AAAAAA'),
+                right=Side(style='thin', color='AAAAAA'),
+                top=Side(style='thin', color='AAAAAA'),
+                bottom=Side(style='thin', color='AAAAAA')
+            )
+            for cell in ws_ipc[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
+                cell.border = thin_border
+
+            # 資料列交替底色
+            light_fill = PatternFill(start_color="EBF4FF", end_color="EBF4FF", fill_type="solid")
+            for row_idx, row in enumerate(ws_ipc.iter_rows(min_row=2), start=2):
+                fill = light_fill if row_idx % 2 == 0 else PatternFill(fill_type=None)
+                for cell in row:
+                    cell.fill = fill
+                    cell.border = thin_border
+                    cell.alignment = Alignment(vertical='top', wrap_text=(cell.column == 5))
+
+            # 欄寬自動調整（上限保護）
+            col_max_widths = {1: 22, 2: 12, 3: 12, 4: 40, 5: 80}
+            for col_idx, col_cells in enumerate(ws_ipc.columns, start=1):
+                max_len = max(
+                    (len(str(c.value)) if c.value is not None else 0)
+                    for c in col_cells
+                )
+                fitted = min(max_len + 4, col_max_widths.get(col_idx, 50))
+                ws_ipc.column_dimensions[get_column_letter(col_idx)].width = max(fitted, 10)
+
+            # 凍結首列
+            ws_ipc.freeze_panes = "A2"
+
+        wb.save(out_path)
+    except Exception as e:
+        logger.warning(f"IPC sheet post-processing failed: {e}")
 
     return FileResponse(path=out_path, filename=out_filename,
                         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

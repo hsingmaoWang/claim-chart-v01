@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import Loader from './Loader';
 import MindMapTree from './MindMapTree';
@@ -51,6 +51,11 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
   const [isDragging, setIsDragging] = useState(false);
   const [captureImage, setCaptureImage] = useState(null);
+  // IPC 分類統計：用 useRef 兒存，不觸發 re-render（僅於匯出時讀取）
+  const ipcStatsRef = useRef(null);
+  const handleIpcStatsReady = useCallback((stats) => {
+    ipcStatsRef.current = stats;
+  }, []); // 穩定引用，不造成子元件 re-render
 
   // Stage 1 Taxonomy States
   const [stage1Taxonomy, setStage1Taxonomy] = useState(null);
@@ -554,9 +559,11 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
     await new Promise(r => setTimeout(r, 50));
     try {
       // Merge stage1Taxonomy definitions or treeData for complete export
+      // 若有 IPC 主目統計（由 IpcCirclePackingChart 回傳）則一併包含，後端將寫入「IPC分類」工作表
       const payload = {
         ...treeData,
-        stage1_taxonomy: stage1Taxonomy
+        stage1_taxonomy: stage1Taxonomy,
+        ...(ipcStatsRef.current ? { ipc_stats: ipcStatsRef.current } : {})
       };
 
       const response = await fetch('/api/mindmap/export', {
@@ -1819,7 +1826,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
               <div style={{ display: viewMode === 'ipc' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入 IPC 分類圖...</div>}>
-                  <IpcCirclePackingChart treeData={treeData} onCaptureReady={viewMode === 'ipc' ? setCaptureImage : undefined} authState={authState} />
+                  <IpcCirclePackingChart
+                    treeData={treeData}
+                    onCaptureReady={viewMode === 'ipc' ? setCaptureImage : undefined}
+                    authState={authState}
+                    onIpcStatsReady={handleIpcStatsReady}
+                  />
                 </Suspense>
               </div>
 
