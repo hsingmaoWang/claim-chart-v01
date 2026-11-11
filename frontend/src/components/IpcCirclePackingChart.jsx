@@ -3,19 +3,20 @@ import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
 import { Sun, Moon, FileText, RotateCcw, ChevronRight, Layers, Info, Award, AlertCircle, AlertTriangle } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { parseIpcCode } from '../utils/ipcUtils';
 
 // IPC 八大部主題色彩系統（日間 / 夜間模式分開調配）
 const SECTION_PALETTES = {
   light: {
-    A: { fill: '#818cf8', stroke: '#4f46e5', text: '#1e1b4b', subFill: '#c7d2fe' }, // 人類生活需要 (藍紫)
-    B: { fill: '#86efac', stroke: '#16a34a', text: '#064e3b', subFill: '#bbf7d0' }, // 作業；運輸 (綠)
-    C: { fill: '#fdba74', stroke: '#ea580c', text: '#7c2d12', subFill: '#fed7aa' }, // 化學；冶金 (橘)
-    D: { fill: '#6ee7b7', stroke: '#059669', text: '#022c22', subFill: '#a7f3d0' }, // 紡織；造紙 (青綠)
-    E: { fill: '#f472b6', stroke: '#db2777', text: '#831843', subFill: '#fbcfe8' }, // 固定構造物 (粉紅)
-    F: { fill: '#fde047', stroke: '#ca8a04', text: '#713f12', subFill: '#fef08a' }, // 機械工程；照明 (金黃)
-    G: { fill: '#38bdf8', stroke: '#0284c7', text: '#082f49', subFill: '#bae6fd' }, // 物理 (湛藍)
-    H: { fill: '#c084fc', stroke: '#9333ea', text: '#3b0764', subFill: '#e9d5ff' }, // 電學 (紫)
-    default: { fill: '#cbd5e1', stroke: '#64748b', text: '#1e293b', subFill: '#f1f5f9' }
+    A: { fill: '#818cf8', stroke: '#6d7af7ff', text: '#1e1b4b', subFill: '#c7d2fe' }, // 人類生活需要 (藍紫)
+    B: { fill: '#86efac', stroke: '#6eec9dff', text: '#064e3b', subFill: '#bbf7d0' }, // 作業；運輸 (綠)
+    C: { fill: '#fdba74', stroke: '#f8ab58ff', text: '#7c2d12', subFill: '#fed7aa' }, // 化學；冶金 (橘)
+    D: { fill: '#6ee7b7', stroke: '#5be6aeff', text: '#022c22', subFill: '#a7f3d0' }, // 紡織；造紙 (青綠)
+    E: { fill: '#f472b6', stroke: '#f45facff', text: '#831843', subFill: '#fbcfe8' }, // 固定構造物 (粉紅)
+    F: { fill: '#fde047', stroke: '#f9d62cff', text: '#713f12', subFill: '#fef08a' }, // 機械工程；照明 (金黃)
+    G: { fill: '#38bdf8', stroke: '#24b7f6ff', text: '#082f49', subFill: '#bae6fd' }, // 物理 (湛藍)
+    H: { fill: '#c084fc', stroke: '#b675f6ff', text: '#3b0764', subFill: '#e9d5ff' }, // 電學 (紫)
+    default: { fill: '#cbd5e1', stroke: '#b7cae2ff', text: '#1e293b', subFill: '#f1f5f9' }
   },
   dark: {
     A: { fill: '#6366f1', stroke: '#a5b4fc', text: '#e0e7ff', subFill: '#4338ca' },
@@ -41,102 +42,6 @@ const SECTION_NAMES = {
   H: '電學'
 };
 
-/**
- * 依據規範解析 IPC Subgroup 字串：
- * a. 以 ", " 分割
- * b. 前 4 碼為 IPC 部類碼 (Subclass)
- * c. 第 5-8 碼去除 5-7 碼前導 "0"
- * d. 號碼 + "/" + 第 9 碼以後剩下未取的號碼 = IPC主次目
- */
-function parseIpcCode(rawCode) {
-  if (!rawCode) return null;
-  const s = String(rawCode).trim();
-  if (!s || ['nan', 'none', '-'].includes(s.toLowerCase())) return null;
-
-  // 1. 標準格式相容 e.g. "A47C 1/02" 或 "A47C 1/00"
-  const mStd = s.match(/^([A-H]\d{2}[A-Z])\s*(\d{1,4})\/(\d{2,6})$/i);
-  if (mStd) {
-    const subclass = mStd[1].toUpperCase();
-    const mgNum = String(parseInt(mStd[2], 10));
-    let sgSuffix = mStd[3];
-    if (sgSuffix.length > 2) {
-      sgSuffix = sgSuffix.substring(0, 2) + sgSuffix.substring(2).replace(/0+$/, '');
-    }
-    const section = subclass[0];
-    const classCode = subclass.substring(0, 3);
-    const subgroupNum = `${mgNum}/${sgSuffix}`;
-    const mainGroupNum = `${mgNum}/00`;
-    return {
-      section,
-      classCode,
-      subclass,
-      mainGroupNum,
-      subgroupNum,
-      mainGroupFull: `${subclass} ${mainGroupNum}`,
-      subgroupFull: `${subclass} ${subgroupNum}`,
-      isMainGroup: subgroupNum.endsWith('/00')
-    };
-  }
-
-  // 2. 固定寬度碼或無空格格式
-  const clean = s.replace(/\s+/g, '');
-  if (clean.length < 4) return null;
-
-  const subclass = clean.substring(0, 4).toUpperCase();
-  const section = subclass[0];
-  const classCode = subclass.substring(0, 3);
-
-  if (clean.length === 4) {
-    return {
-      section,
-      classCode,
-      subclass,
-      mainGroupNum: '',
-      subgroupNum: '',
-      mainGroupFull: '',
-      subgroupFull: subclass,
-      isMainGroup: false
-    };
-  }
-
-  let mgNum = '0';
-  let subgroupNum = '';
-  let mainGroupNum = '';
-
-  if (clean.substring(4).includes('/')) {
-    const parts = clean.substring(4).split('/');
-    mgNum = String(parseInt(parts[0], 10) || parts[0].replace(/^0+/, '') || '0');
-    let sgPart = parts[1];
-    if (sgPart.length > 2) {
-      sgPart = sgPart.substring(0, 2) + sgPart.substring(2).replace(/0+$/, '');
-    }
-    subgroupNum = `${mgNum}/${sgPart}`;
-    mainGroupNum = `${mgNum}/00`;
-  } else {
-    // 依序擷取第 5-8 碼 (index 4 to 8)
-    const part58 = clean.length >= 8 ? clean.substring(4, 8) : clean.substring(4);
-    mgNum = part58.replace(/^0+/, '') || '0';
-    // 第 9 碼以後
-    let part9Plus = clean.length > 8 ? clean.substring(8) : '00';
-    if (part9Plus.length > 2) {
-      part9Plus = part9Plus.substring(0, 2) + part9Plus.substring(2).replace(/0+$/, '');
-    }
-    subgroupNum = `${mgNum}/${part9Plus}`;
-    mainGroupNum = `${mgNum}/00`;
-  }
-
-  return {
-    section,
-    classCode,
-    subclass,
-    mainGroupNum,
-    subgroupNum,
-    mainGroupFull: `${subclass} ${mainGroupNum}`,
-    subgroupFull: `${subclass} ${subgroupNum}`,
-    isMainGroup: subgroupNum.endsWith('/00')
-  };
-}
-
 const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStatsReady }) => {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
@@ -153,6 +58,10 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
 
   // 當前縮放聚焦節點 (麵包屑導航)
   const [currentFocus, setCurrentFocus] = useState(null);
+
+  // 記錄 Top 5 標籤自訂拖曳位移量 (Key: node.data.name, Value: { x: modelOffsetX, y: modelOffsetY })
+  const labelOffsetsRef = useRef(new Map());
+  const [hasCustomLabelPos, setHasCustomLabelPos] = useState(false);
 
   // 後端載入之 IPC 中文定義字典與全階層定義
   const [definitions, setDefinitions] = useState({});
@@ -663,6 +572,17 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
     const top5Glow = defs.append('filter').attr('id', 'top5-glow').attr('x', '-30%').attr('y', '-30%').attr('width', '160%').attr('height', '160%');
     top5Glow.append('feDropShadow').attr('dx', '0').attr('dy', '0').attr('stdDeviation', '5').attr('flood-color', '#f59e0b').attr('flood-opacity', '0.9');
 
+    // 定義 Top 5 指引線起點圓點 Marker
+    const leaderMarker = defs
+      .append('marker')
+      .attr('id', 'top5-leader-dot')
+      .attr('viewBox', '0 0 6 6')
+      .attr('refX', '3')
+      .attr('refY', '3')
+      .attr('markerWidth', '4')
+      .attr('markerHeight', '4');
+    leaderMarker.append('circle').attr('cx', '3').attr('cy', '3').attr('r', '2.5').attr('fill', '#f59e0b');
+
     // 外層縮放容器 (支援滑鼠滾輪放大/縮小與拖曳平移)
     const zoomContainer = svg.append('g').attr('id', 'zoom-container');
 
@@ -764,9 +684,135 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
         }
       });
 
+    // 建立 Top 5 導引線群組 (置於圓圈之上、文字標籤之下)
+    const leaderLineGroup = g.append('g').attr('class', 'top5-leader-lines').style('pointer-events', 'none');
     // 標籤文字群組 (Label)
-    const labelGroup = g.append('g').style('pointer-events', 'none');
+    const labelGroup = g.append('g').attr('class', 'label-group').style('pointer-events', 'none');
 
+    // 取得所有 Top 5 節點並還原位移量
+    const top5Nodes = nodes.filter(d => d.data.level === 4 && top5Map.has(d.data.name));
+    top5Nodes.forEach(d => {
+      const saved = labelOffsetsRef.current?.get(d.data.name);
+      d._modelOffsetX = saved ? saved.x : 0;
+      d._modelOffsetY = saved ? saved.y : 0;
+    });
+
+    if (labelOffsetsRef.current && labelOffsetsRef.current.size > 0) {
+      setHasCustomLabelPos(true);
+    }
+
+    const leaderLines = leaderLineGroup
+      .selectAll('line')
+      .data(top5Nodes)
+      .join('line')
+      .attr('class', 'top5-leader-line')
+      .attr('stroke', isDark ? '#f59e0b' : '#d97706')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '3,3')
+      .attr('marker-start', 'url(#top5-leader-dot)')
+      .style('pointer-events', 'none')
+      .style('opacity', 0.85)
+      .style('display', 'none');
+
+    let focusDescendants = new Set(root.descendants());
+
+    function updateLeaderLineForNode(d) {
+      if (!view) return;
+      const k = height / view[2];
+      const isTop5 = d.data.level === 4 && top5Map.has(d.data.name);
+      if (!isTop5) return;
+
+      const line = leaderLineGroup.selectAll('line').filter(item => item === d);
+      const isRoot = focus === root;
+
+      // 嚴格規則：僅在根目錄 (isRoot) 且 Top 5 標籤處於顯示狀態時，才可能顯示導引線
+      if (!isRoot) {
+        line.style('display', 'none');
+        return;
+      }
+
+      // 檢查對應的 Top 5 label 元素是否在畫面上顯示
+      const labelElem = labelGroup.selectAll('.node-label').filter(item => item === d);
+      if (labelElem.empty() || labelElem.style('display') === 'none') {
+        line.style('display', 'none');
+        return;
+      }
+
+      const ox = (d._modelOffsetX || 0) * k;
+      const oy = (d._modelOffsetY || 0) * k;
+      const dist = Math.hypot(ox, oy);
+      const r = d.r * k;
+
+      if (dist > Math.max(r * 0.5, 12)) {
+        const startRatio = (dist > 0 && r < dist) ? r / dist : 0;
+        const x1 = (d.x - view[0]) * k + (ox * startRatio);
+        const y1 = (d.y - view[1]) * k + (oy * startRatio);
+        const x2 = (d.x - view[0]) * k + ox;
+        const y2 = (d.y - view[1]) * k + oy;
+
+        line
+          .attr('x1', x1)
+          .attr('y1', y1)
+          .attr('x2', x2)
+          .attr('y2', y2)
+          .style('display', 'inline');
+      } else {
+        line.style('display', 'none');
+      }
+    }
+
+    function updateAllLeaderLines() {
+      top5Nodes.forEach(updateLeaderLineForNode);
+    }
+
+    let isDragging = false;
+    let dragMoved = false;
+
+    const dragBehavior = d3
+      .drag()
+      .on('start', function (event, d) {
+        if (!(d.data.level === 4 && top5Map.has(d.data.name))) return;
+        event.sourceEvent.stopPropagation();
+        isDragging = false;
+        dragMoved = false;
+        d3.select(this).style('cursor', 'grabbing');
+        setTooltip(prev => ({ ...prev, visible: false }));
+      })
+      .on('drag', function (event, d) {
+        if (!(d.data.level === 4 && top5Map.has(d.data.name))) return;
+        if (!view) return;
+        isDragging = true;
+        dragMoved = true;
+        setTooltip(prev => ({ ...prev, visible: false }));
+
+        const k = height / view[2];
+        d._modelOffsetX = (d._modelOffsetX || 0) + event.dx / k;
+        d._modelOffsetY = (d._modelOffsetY || 0) + event.dy / k;
+
+        const ox = d._modelOffsetX * k;
+        const oy = d._modelOffsetY * k;
+        d3.select(this).attr('transform', `translate(${(d.x - view[0]) * k + ox},${(d.y - view[1]) * k + oy})`);
+
+        updateLeaderLineForNode(d);
+      })
+      .on('end', function (event, d) {
+        if (!(d.data.level === 4 && top5Map.has(d.data.name))) return;
+        d3.select(this).style('cursor', 'grab');
+
+        if (labelOffsetsRef.current && dragMoved) {
+          labelOffsetsRef.current.set(d.data.name, {
+            x: d._modelOffsetX,
+            y: d._modelOffsetY
+          });
+          setHasCustomLabelPos(true);
+        }
+
+        setTimeout(() => {
+          isDragging = false;
+        }, 50);
+      });
+
+    // 標籤文字 (Label)
     const label = labelGroup
       .selectAll('g')
       .data(nodes.slice(1))
@@ -775,7 +821,83 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
       .style('font-family', 'Inter, system-ui, sans-serif')
       .style('text-anchor', 'middle')
       .style('display', 'none')
-      .style('opacity', 0);
+      .style('opacity', 0)
+      .style('user-select', 'none')
+      .style('pointer-events', d => (d.data.level === 4 && top5Map.has(d.data.name) ? 'all' : 'none'))
+      .style('cursor', d => (d.data.level === 4 && top5Map.has(d.data.name) ? 'grab' : 'default'))
+      .call(dragBehavior)
+      .on('click', (event, d) => {
+        if (!(d.data.level === 4 && top5Map.has(d.data.name))) return;
+        event.stopPropagation();
+        if (isDragging || dragMoved) return;
+        if (focus !== d) {
+          zoom(d);
+        } else if (d.parent) {
+          zoom(d.parent);
+        }
+      })
+      .on('dblclick', function (event, d) {
+        if (!(d.data.level === 4 && top5Map.has(d.data.name))) return;
+        event.stopPropagation();
+        d._modelOffsetX = 0;
+        d._modelOffsetY = 0;
+        if (labelOffsetsRef.current) {
+          labelOffsetsRef.current.delete(d.data.name);
+          if (labelOffsetsRef.current.size === 0) {
+            setHasCustomLabelPos(false);
+          }
+        }
+        if (view) {
+          const k = height / view[2];
+          d3.select(this).attr('transform', `translate(${(d.x - view[0]) * k},${(d.y - view[1]) * k})`);
+          updateLeaderLineForNode(d);
+        }
+      })
+      .on('mouseover', function (event, d) {
+        if (isDragging) return;
+        if (d.data.level === 4 && top5Map.has(d.data.name)) {
+          d3.select(this).select('rect').attr('stroke', '#f59e0b').attr('stroke-width', 2);
+          const fullDesc = fullPaths[d.data.name] || fullPaths[d.data.code] || '';
+          const curDesc = getResolvedDesc(d.data.name, d.data.code);
+          const top5Info = top5Map.get(d.data.name) || null;
+
+          setTooltip({
+            visible: true,
+            x: event.clientX,
+            y: event.clientY,
+            data: {
+              ...d.data,
+              curDesc,
+              fullDesc,
+              top5Info
+            }
+          });
+        }
+      })
+      .on('mousemove', function (event, d) {
+        if (isDragging) return;
+        if (d.data.level === 4 && top5Map.has(d.data.name)) {
+          setTooltip(prev => ({
+            ...prev,
+            x: event.clientX,
+            y: event.clientY
+          }));
+        }
+      })
+      .on('mouseout', function (event, d) {
+        if (d.data.level === 4 && top5Map.has(d.data.name)) {
+          d3.select(this)
+            .select('rect')
+            .attr('stroke', isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)')
+            .attr('stroke-width', 1.5);
+        }
+        setTooltip(prev => ({ ...prev, visible: false }));
+      });
+
+    label
+      .filter(d => d.data.level === 4 && top5Map.has(d.data.name))
+      .append('title')
+      .text('可按住滑鼠拖曳調整標籤位置；雙擊還原');
 
     // 標籤背景底色徽章 (確保文字極致清晰)
     label
@@ -785,7 +907,8 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
       .attr('fill', d => (d.data.level === 4 && top5Map.has(d.data.name) ? (isDark ? 'rgba(245, 158, 11, 0.4)' : 'rgba(254, 243, 199, 0.5)') : isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)'))
       .attr('stroke', d => (d.data.level === 4 && top5Map.has(d.data.name) ? 'transparent' : isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'))
       .attr('stroke-width', d => (d.data.level === 4 && top5Map.has(d.data.name) ? 1.5 : 0.8))
-      .style('display', 'none');
+      .style('display', 'none')
+      .style('cursor', d => (d.data.level === 4 && top5Map.has(d.data.name) ? 'grab' : 'default'));
 
     // 標籤文字主體
     const labelText = label
@@ -827,23 +950,27 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
       const k = height / v[2];
       view = v;
 
-      label.attr('transform', d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
+      label.attr('transform', d => {
+        const ox = (d._modelOffsetX || 0) * k;
+        const oy = (d._modelOffsetY || 0) * k;
+        return `translate(${(d.x - v[0]) * k + ox},${(d.y - v[1]) * k + oy})`;
+      });
       node.attr('transform', d => `translate(${(d.x - v[0]) * k},${(d.y - v[1]) * k})`);
       node.attr('r', d => d.r * k);
+
+      updateAllLeaderLines();
     }
 
     // 核心層級切換邏輯 (嚴格限制：根目錄僅標示第 4 階 Top 5 主目)
     function zoom(d) {
       focus = d;
+      focusDescendants = new Set(d.descendants());
       setCurrentFocus(d === root ? null : d);
 
       const isRoot = d === root;
       // 根節點整體佔 80% 面板；展開下階時，該分支節點整體佔 75% 面板
       const targetDiameter = isRoot ? (d.r * 2) / 1.3 : (d.r * 2) / 0.9;
       const targetView = [d.x, d.y, targetDiameter];
-
-      // 取得焦點節點之所有子孫節點集合
-      const focusDescendants = new Set(d.descendants());
 
       const transition = g
         .transition()
@@ -867,6 +994,25 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
         .style('pointer-events', child => {
           if (isRoot) return 'all';
           return focusDescendants.has(child) ? 'all' : 'none';
+        });
+
+      // 連線能見度過渡動畫：與 Top 5 標籤完全同步，聚焦至子圓圈時立即隱藏
+      leaderLines
+        .transition(transition)
+        .style('opacity', () => (isRoot ? 0.85 : 0))
+        .on('start', function (child) {
+          if (!isRoot) {
+            d3.select(this).style('display', 'none');
+          } else {
+            updateLeaderLineForNode(child);
+          }
+        })
+        .on('end', function (child) {
+          if (!isRoot) {
+            d3.select(this).style('display', 'none');
+          } else {
+            updateLeaderLineForNode(child);
+          }
         });
 
       // 根目錄下：Label 僅標示第 4 階 (Main Group 主目) 佔比前 5 大之標籤，完全排除第 5 階次目與第 1~3 階
@@ -946,6 +1092,25 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
       svg.transition().duration(500).call(zoomBehavior.transform, d3.zoomIdentity);
       zoom(targetNode);
     };
+    svgRef.current.__resetLabelPositions = () => {
+      top5Nodes.forEach(d => {
+        d._modelOffsetX = 0;
+        d._modelOffsetY = 0;
+      });
+      if (labelOffsetsRef.current) {
+        labelOffsetsRef.current.clear();
+      }
+      setHasCustomLabelPos(false);
+      if (view) {
+        const k = height / view[2];
+        label.attr('transform', d => {
+          const ox = (d._modelOffsetX || 0) * k;
+          const oy = (d._modelOffsetY || 0) * k;
+          return `translate(${(d.x - view[0]) * k + ox},${(d.y - view[1]) * k + oy})`;
+        });
+        updateAllLeaderLines();
+      }
+    };
   }, [hierarchyRoot, theme, isDark, definitions, fullPaths, top5MainGroups, getResolvedDesc]);
 
   // 麵包屑導航路徑清單
@@ -1004,8 +1169,32 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
           </div>
         </div>
 
-        {/* 右側：返回頂層按鈕 + 日間/夜間模式膠囊切換鈕 */}
+        {/* 右側：重設標籤按鈕 + 返回頂層按鈕 + 日間/夜間模式膠囊切換鈕 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {hasCustomLabelPos && (
+            <button
+              onClick={() => svgRef.current?.__resetLabelPositions && svgRef.current.__resetLabelPositions()}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '0.4rem',
+                border: isDark ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid #fcd34d',
+                background: isDark ? 'rgba(245, 158, 11, 0.15)' : '#fef3c7',
+                color: isDark ? '#fbbf24' : '#b45309',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              title="將所有 Top 5 標籤還原至圓心預設位置 (亦可雙擊個別標籤還原)"
+            >
+              <RotateCcw size={13} />
+              重設標籤位置
+            </button>
+          )}
+
           {currentFocus && (
             <button
               onClick={() => svgRef.current?.__resetZoom && svgRef.current.__resetZoom()}
@@ -1251,7 +1440,7 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
             {/* 操作提示小語 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', opacity: 0.9 }}>
               <Info size={14} />
-              <span>滾輪縮放畫布；點擊圓圈聚焦；點擊空白回到上階；金黃邊框為主目 (第4階) Top 5 </span>
+              <span>滾輪縮放畫布；點擊圓圈聚焦；點擊空白回到上階；Top 5 標籤可按住滑鼠拖曳調整位置 (雙擊還原)</span>
             </div>
           </div>
 

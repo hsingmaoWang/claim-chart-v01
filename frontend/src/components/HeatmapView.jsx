@@ -21,6 +21,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, X as XIcon, Sun, Moon, Settings, ChevronRight, Sparkles } from 'lucide-react';
 import HeatmapSettingsModal from './HeatmapSettingsModal';
+import {
+  isIpcSubgroupDimension,
+  formatDimensionValue,
+  formatComboLabel,
+  isFormattedIpcCode
+} from '../utils/ipcUtils';
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -595,8 +601,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
       if (uniquePatents.length > 0) {
         setSelectedCellPatents({
-          xLabel: targetX,
-          yLabel: targetY,
+          xLabel: formatComboLabel(targetX, xAxisDims),
+          yLabel: formatComboLabel(targetY, yAxisDims),
           patents: uniquePatents
         });
       }
@@ -731,28 +737,32 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
 
   // Flattened data calculation for Bubble Plot (Requirement 3: 100% synchronized with Heatmap)
   const bubbleData = useMemo(() => {
-    if (!matrixData?.z?.length) return { xs: [], ys: [], sizes: [], colors: [], texts: [], maxVal: 1 };
+    if (!matrixData?.z?.length) return { xs: [], ys: [], sizes: [], colors: [], texts: [], customData: [], maxVal: 1 };
     const xs = [];
     const ys = [];
     const sizes = [];
     const colors = [];
     const texts = [];
+    const customData = [];
 
     matrixData.z.forEach((row, yi) => {
+      const dispY = formatComboLabel(matrixData.y[yi], yAxisDims);
       row.forEach((val, xi) => {
         if (val > 0 || showEmpty) {
+          const dispX = formatComboLabel(matrixData.x[xi], xAxisDims);
           xs.push(matrixData.x[xi]);
           ys.push(matrixData.y[yi]);
           sizes.push(val);
           colors.push(val);
           texts.push(val > 0 ? String(val) : '');
+          customData.push([dispX, dispY]);
         }
       });
     });
 
     const maxVal = Math.max(...sizes, 1);
-    return { xs, ys, sizes, colors, texts, maxVal };
-  }, [matrixData, showEmpty]);
+    return { xs, ys, sizes, colors, texts, customData, maxVal };
+  }, [matrixData, showEmpty, xAxisDims, yAxisDims]);
 
   // ─── Multi-level Axis Label & Separator Helper Functions ───
   const cleanLabelText = useCallback((str) => {
@@ -772,6 +782,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const wrapLabel = useCallback((text, threshold = 7) => {
     if (!text || typeof text !== 'string') return text || '';
     if (text.includes('\n') || text.includes('<br>')) return text;
+    // Don't split standard IPC codes (e.g. "G06N 3/08", "A47C 1/02", "G06N 20/00") across lines
+    if (isFormattedIpcCode(text)) return text;
     if (text.length <= threshold) return text;
 
     const mid = 7;
@@ -809,10 +821,18 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const xTickText = useMemo(() => {
     if (!matrixData?.x) return [];
     if (!isX2Level) {
-      return matrixData.x.map(label => wrapLabel(cleanLabelText(label.replace(/ > /g, '<br>'))));
+      const dim = xAxisDims[0];
+      return matrixData.x.map(label => {
+        const formatted = formatDimensionValue(label, dim);
+        return wrapLabel(cleanLabelText(formatted.replace(/ > /g, '<br>')));
+      });
     }
-    return xParsed.map(item => wrapLabel(cleanLabelText(item.child)));
-  }, [matrixData?.x, isX2Level, xParsed, cleanLabelText, wrapLabel]);
+    const childDim = xAxisDims[1];
+    return xParsed.map(item => {
+      const formatted = formatDimensionValue(item.child, childDim);
+      return wrapLabel(cleanLabelText(formatted));
+    });
+  }, [matrixData?.x, isX2Level, xAxisDims, xParsed, cleanLabelText, wrapLabel]);
 
   const { xLevel1Annotations, xSeparatorShapes } = useMemo(() => {
     if (!isX2Level || !xParsed.length) {
@@ -834,14 +854,16 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
       }
     });
 
+    const parentDim = xAxisDims[0];
     groups.forEach((g, gIdx) => {
       const midX = (g.startIdx + g.endIdx) / 2;
+      const formattedParent = formatDimensionValue(g.parent, parentDim);
       annotations.push({
         x: matrixData.x[Math.round(midX)] !== undefined ? (g.startIdx === g.endIdx ? matrixData.x[g.startIdx] : midX) : midX,
         y: -0.25,
         xref: 'x',
         yref: 'paper',
-        text: wrapLabel(cleanLabelText(g.parent)),
+        text: wrapLabel(cleanLabelText(formattedParent)),
         showarrow: false,
         xanchor: 'center',
         yanchor: 'top',
@@ -873,7 +895,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     });
 
     return { xLevel1Annotations: annotations, xSeparatorShapes: shapes };
-  }, [isX2Level, xParsed, matrixData?.x, theme, cleanLabelText, wrapLabel]);
+  }, [isX2Level, xParsed, matrixData?.x, xAxisDims, theme, cleanLabelText, wrapLabel]);
 
   const isY2Level = yAxisDims.length === 2;
   const yParsed = useMemo(() => {
@@ -890,10 +912,18 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
   const yTickText = useMemo(() => {
     if (!matrixData?.y) return [];
     if (!isY2Level) {
-      return matrixData.y.map(label => wrapLabel(cleanLabelText(label)));
+      const dim = yAxisDims[0];
+      return matrixData.y.map(label => {
+        const formatted = formatDimensionValue(label, dim);
+        return wrapLabel(cleanLabelText(formatted));
+      });
     }
-    return yParsed.map(item => wrapLabel(cleanLabelText(item.child)));
-  }, [matrixData?.y, isY2Level, yParsed, cleanLabelText, wrapLabel]);
+    const childDim = yAxisDims[1];
+    return yParsed.map(item => {
+      const formatted = formatDimensionValue(item.child, childDim);
+      return wrapLabel(cleanLabelText(formatted));
+    });
+  }, [matrixData?.y, isY2Level, yAxisDims, yParsed, cleanLabelText, wrapLabel]);
 
   const { yLevel1Annotations, ySeparatorShapes } = useMemo(() => {
     if (!isY2Level || !yParsed.length) {
@@ -915,14 +945,16 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
       }
     });
 
+    const parentDim = yAxisDims[0];
     groups.forEach((g, gIdx) => {
       const midY = (g.startIdx + g.endIdx) / 2;
+      const formattedParent = formatDimensionValue(g.parent, parentDim);
       annotations.push({
         x: -0.25,
         y: matrixData.y[Math.round(midY)] !== undefined ? (g.startIdx === g.endIdx ? matrixData.y[g.startIdx] : midY) : midY,
         xref: 'paper',
         yref: 'y',
-        text: wrapLabel(cleanLabelText(g.parent)),
+        text: wrapLabel(cleanLabelText(formattedParent)),
         showarrow: false,
         xanchor: 'left',
         yanchor: 'middle',
@@ -954,7 +986,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     });
 
     return { yLevel1Annotations: annotations, ySeparatorShapes: shapes };
-  }, [isY2Level, yParsed, matrixData?.y, theme, cleanLabelText, wrapLabel]);
+  }, [isY2Level, yParsed, matrixData?.y, yAxisDims, theme, cleanLabelText, wrapLabel]);
 
   // DnD handlers
   const handleDragStart = useCallback((event) => {
@@ -1634,10 +1666,19 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
               const maxBubblePx = 42;
               const sizeref = (2 * bubbleData.maxVal) / (maxBubblePx ** 2);
 
+              const heatmapCustomData = matrixData.y.map(rawY => {
+                const dispY = formatComboLabel(rawY, yAxisDims);
+                return matrixData.x.map(rawX => {
+                  const dispX = formatComboLabel(rawX, xAxisDims);
+                  return [dispX, dispY];
+                });
+              });
+
               const plotData = chartType === 'heatmap' ? [{
                 z: matrixData.z,
                 x: matrixData.x,
                 y: matrixData.y,
+                customdata: heatmapCustomData,
                 type: 'heatmap',
                 colorscale: coolwarmScale,
                 showscale: true,
@@ -1647,12 +1688,13 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   len: 0.8
                 },
                 hovertemplate:
-                  '<b>X 軸 (%{x})</b><br>' +
-                  '<b>Y 軸 (%{y})</b><br>' +
+                  '<b>X 軸 (%{customdata[0]})</b><br>' +
+                  '<b>Y 軸 (%{customdata[1]})</b><br>' +
                   '<b>專利件數</b>: %{z} 件<extra></extra>'
               }] : [{
                 x: bubbleData.xs,
                 y: bubbleData.ys,
+                customdata: bubbleData.customData,
                 mode: 'markers+text',
                 type: 'scatter',
                 marker: {
@@ -1681,8 +1723,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                   color: '#ffffff'
                 },
                 hovertemplate:
-                  '<b>X 軸 (%{x})</b><br>' +
-                  '<b>Y 軸 (%{y})</b><br>' +
+                  '<b>X 軸 (%{customdata[0]})</b><br>' +
+                  '<b>Y 軸 (%{customdata[1]})</b><br>' +
                   '<b>專利件數</b>: %{marker.size} 件<extra></extra>'
               }];
 

@@ -27,8 +27,17 @@ export default function LoginView({ onLoginSuccess }) {
       });
 
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || '帳號或密碼錯誤，請重新嘗試。');
+        let errMessage = '';
+        try {
+          const errData = await response.json();
+          errMessage = errData.detail;
+        } catch (_) {
+          // If response is not JSON (e.g. Vite proxy 500 error when backend is offline)
+          if (response.status === 500 || response.status === 502 || response.status === 504) {
+            errMessage = '無法連線至後端伺服器 (請確認 Backend 是否已正確啟動在 port 8000)。';
+          }
+        }
+        throw new Error(errMessage || '帳號或密碼錯誤，請重新嘗試。');
       }
 
       const data = await response.json();

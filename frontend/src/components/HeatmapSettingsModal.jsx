@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Settings, X as XIcon, Sparkles, Filter, Layers, BarChart2, Check, ChevronDown } from 'lucide-react';
+import { isIpcSubgroupDimension, formatIpcSubgroupLabel } from '../utils/ipcUtils';
 
 const HeatmapSettingsModal = ({
   isOpen,
@@ -528,7 +529,7 @@ const HeatmapSettingsModal = ({
                       {filterValues.length === 0
                         ? '全部數值 (不限定篩選項目)'
                         : filterValues.length === 1
-                          ? filterValues[0]
+                          ? (isIpcSubgroupDimension(filterField) ? formatIpcSubgroupLabel(filterValues[0]) : filterValues[0])
                           : `已選 ${filterValues.length} 個項目`
                       }
                     </span>
@@ -648,7 +649,7 @@ const HeatmapSettingsModal = ({
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap'
                               }}>
-                                {item.value}
+                                {isIpcSubgroupDimension(filterField) ? formatIpcSubgroupLabel(item.value) : item.value}
                               </span>
                               <span style={{
                                 fontSize: '0.72rem',

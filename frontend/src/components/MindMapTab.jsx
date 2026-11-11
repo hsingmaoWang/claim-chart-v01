@@ -4,17 +4,18 @@ import Loader from './Loader';
 import MindMapTree from './MindMapTree';
 import ColumnSelectionModal from './ColumnSelectionModal';
 import ClassificationSettingsModal from './ClassificationSettingsModal';
-import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp, BarChart2, Sun, Moon } from 'lucide-react';
+import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp, BarChart2, Sun, Moon, Globe } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
 const SunburstView = lazy(() => import('./SunburstView'));
 const LifeCycleChart = lazy(() => import('./LifeCycleChart'));
 const PatentTrendChart = lazy(() => import('./PatentTrendChart'));
 const IpcCirclePackingChart = lazy(() => import('./IpcCirclePackingChart'));
+const CountryAnalysisChart = lazy(() => import('./CountryAnalysisChart'));
 
 const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [appState, setAppState] = useState('idle'); // idle, processing, review_stage1, processing_stage2, tree
-  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', 'lifecycle', 'trend', or 'ipc'
+  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'heatmap', 'lifecycle', 'country', 'trend', or 'ipc'
   const [hierarchyType, setHierarchyType] = useState('mindmap'); // 'mindmap' or 'sunburst'
   const [treeTheme, setTreeTheme] = useState('light'); // default: light (day) mode for tree & sunburst
   const [showOtherCategories, setShowOtherCategories] = useState(true);
@@ -1613,6 +1614,26 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
                   技術生命週期圖
                 </button>
                 <button
+                  onClick={() => setViewMode('country')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: '0.4rem',
+                    background: viewMode === 'country' ? 'rgba(82, 152, 245, 1)' : 'rgba(144, 212, 226, 1)',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Globe size={14} />
+                  國別分析圖
+                </button>
+                <button
                   onClick={() => setViewMode('ipc')}
                   style={{
                     padding: '0.4rem 1rem',
@@ -1673,7 +1694,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               </div>
             </div>
 
-            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: (viewMode === 'lifecycle' || viewMode === 'ipc') ? 'visible' : 'hidden', minHeight: (viewMode === 'lifecycle' || viewMode === 'ipc') ? '880px' : '600px' }}>
+            <div className="mindmap-tree-container glass-panel" style={{ flex: 1, position: 'relative', borderRadius: '1rem', border: '1px solid var(--color-border)', background: 'var(--color-surface)', overflow: (viewMode === 'lifecycle' || viewMode === 'ipc' || viewMode === 'country') ? 'visible' : 'hidden', minHeight: (viewMode === 'lifecycle' || viewMode === 'ipc' || viewMode === 'country') ? '880px' : '600px' }}>
               {/* Segmented control for Mindmap vs Sunburst and Day/Night Theme Switcher inside graph area upper right */}
               {viewMode === 'tree' && (
                 <div style={{
@@ -1821,6 +1842,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
               <div style={{ display: viewMode === 'lifecycle' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入技術生命週期圖...</div>}>
                   <LifeCycleChart treeData={treeData} onCaptureReady={viewMode === 'lifecycle' ? setCaptureImage : undefined} authState={authState} />
+                </Suspense>
+              </div>
+
+              <div style={{ display: viewMode === 'country' ? 'block' : 'none', width: '100%', height: '100%' }}>
+                <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入國別分析圖...</div>}>
+                  <CountryAnalysisChart treeData={treeData} onCaptureReady={viewMode === 'country' ? setCaptureImage : undefined} authState={authState} />
                 </Suspense>
               </div>
 

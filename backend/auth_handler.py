@@ -1,14 +1,36 @@
 import os
+import ssl
 import json
 import hashlib
 import secrets
 import logging
 import threading
 import requests
+import httpx
+
+try:
+    import truststore
+    _truststore_ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+except Exception:
+    _truststore_ctx = True
+
 from typing import Dict, Optional
 from fastapi import Header, HTTPException, status, Depends
+from dotenv import load_dotenv
+
+# Ensure environment variables are loaded even if auth_handler is imported directly
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+# Also check project root .env if present
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 logger = logging.getLogger(__name__)
+
+# Build an SSL context that trusts the OS native certificate store (Windows/macOS/Linux).
+# This properly handles corporate proxies with self-signed CA certificates
+# without disabling SSL verification entirely.
+def _sb_client() -> httpx.Client:
+    """Return an httpx Client configured to use the OS native cert store."""
+    return httpx.Client(verify=_truststore_ctx, timeout=10)
 
 # Paths
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -43,7 +65,8 @@ def init_default_users():
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}"
             }
-            res = requests.get(f"{SUPABASE_URL}/rest/v1/users?select=username", headers=headers, timeout=10)
+            with _sb_client() as client:
+                res = client.get(f"{SUPABASE_URL}/rest/v1/users?select=username", headers=headers)
             res.raise_for_status()
             if not res.json():
                 logger.info("Initializing default users in Supabase...")
@@ -113,7 +136,8 @@ def load_users() -> dict:
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}"
             }
-            res = requests.get(f"{SUPABASE_URL}/rest/v1/users", headers=headers, timeout=10)
+            with _sb_client() as client:
+                res = client.get(f"{SUPABASE_URL}/rest/v1/users", headers=headers)
             res.raise_for_status()
             sb_users = res.json()
             sb_usernames = set()
@@ -147,11 +171,11 @@ def delete_user_from_supabase(username: str):
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}"
             }
-            res_del = requests.delete(
-                f"{SUPABASE_URL}/rest/v1/users?username=eq.{quote(username)}",
-                headers=headers,
-                timeout=10
-            )
+            with _sb_client() as client:
+                res_del = client.delete(
+                    f"{SUPABASE_URL}/rest/v1/users?username=eq.{quote(username)}",
+                    headers=headers
+                )
             res_del.raise_for_status()
         except Exception as e:
             logger.error(f"Error deleting user '{username}' from Supabase: {e}")
@@ -183,12 +207,12 @@ def save_users(users: dict) -> bool:
                     "notes": data.get("notes", "")
                 })
             if payload:
-                res_upsert = requests.post(
-                    f"{SUPABASE_URL}/rest/v1/users?on_conflict=username",
-                    json=payload,
-                    headers=headers,
-                    timeout=10
-                )
+                with _sb_client() as client:
+                    res_upsert = client.post(
+                        f"{SUPABASE_URL}/rest/v1/users?on_conflict=username",
+                        json=payload,
+                        headers=headers
+                    )
                 res_upsert.raise_for_status()
             return True
         except Exception as e:
