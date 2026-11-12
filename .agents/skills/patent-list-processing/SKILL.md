@@ -165,6 +165,28 @@ merged_patents = result["consolidated_patents"]
 
 ---
 
+## 規則 4：圖表專利件數去重與母體計算規範 (Chart Patent Deduplication Rules)
+
+在專案前端或後端產製各類圖表（如專利趨勢圖、IPC分類圖、國別分析圖、進階分析圖，以及任何未來新建立之圖表）時，統計專利件數必須嚴格遵循以下兩大準則：
+
+### 1. 母體去重條件分流 (Population Deduplication)
+* **核心心智圖 5 大維度**：`['技術1階', '技術2階', '技術3階', '功效節點', '應用領域']`
+* **情況 A（與心智圖維度任一相關）**：
+  - 若圖表所選維度（X 軸、Y 軸或篩選欄位）中包含上述 5 個心智圖維度任何一個。
+  - **母體件數規則**：**不進行** Publication Number 去重（完整保留同一專利因涵蓋多個技術特徵、功效或應用而展開的記錄）。
+* **情況 B（與心智圖維度均無關）**：
+  - 若圖表所選維度與上述 5 個心智圖維度完全無關（例如純時間趨勢、IPC 分類、國別分佈、申請人 vs 申請國等）。
+  - **母體件數規則**：**必須進行**「公開公告合併 ＋ 同 Publication Number 去重只計 1 件」（同公開號遇重複保留最新公開日）。
+
+### 2. 群組交集內部去重 (In-group Deduplication)
+* 在各圖表的細部統計群組內部（例如熱圖/氣泡圖之 X/Y 交叉儲存格 Cell、IPC 分類節點等），同群組內若有相同的 `Publication Number` / 專利公開公告號，**一律嚴格去重只計 1 件**。
+
+### 3. 公開公告號通配識別與共用工具
+* 專利公開公告號欄位名稱認定必須擴大支援中英文與大小寫通配（`Publication Number`, `publication number`, `專利公開公告號`, `公開號`, `公告號`, `專利號`, `pub no`, `pub_no` 等）。
+* 前端一律引用共用工具模組 `frontend/src/utils/patentUtils.js`（提供 `mergePatentsByAppAndPub`、`getPatentPubNumber`、`isTaxonomyRelated`）。
+
+---
+
 ## 檢驗核對清單 (Verification Checklist)
 
 當代理人或後端程式進行專利清單處理時，務必檢查：
@@ -173,3 +195,5 @@ merged_patents = result["consolidated_patents"]
 - [ ] 步驟 2 家族計數是否區分清楚「案」與「件」？（1 案 N 件）
 - [ ] 步驟 3 國別優先序是否嚴格遵循 `US > WO > EP > TW > CN > JP > KR`？
 - [ ] 遇到缺漏欄位（如缺失 Application Number 或 Family ID）時，是否採用保全機制不誤刪資料？
+- [ ] 產製圖表時，是否依據維度是否包含心智圖 5 大維度正確分流母體去重？
+- [ ] 各圖表群組交集內部，是否嚴格以 Publication Number 去重計 1 件？

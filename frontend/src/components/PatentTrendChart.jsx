@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
 import { Sun, Moon, AlertTriangle, Info, BarChart2, FileText, CheckSquare, Square } from 'lucide-react';
+import { PUB_NUMBER_CANDIDATES, getPatentPubNumber } from '../utils/patentUtils';
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -116,9 +117,7 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
       'Application Number', 'application number', '申請號', 'app no', 'app_no', 'appl. no.', '申請案號'
     ]);
 
-    const pubNumKey = findFieldKeyCaseInsensitive(sample, [
-      'Publication Number', 'publication number', '公開號', '公告號', '專利公開公告號', '專利號', 'pub no', 'pub_no'
-    ]);
+    const pubNumKey = findFieldKeyCaseInsensitive(sample, PUB_NUMBER_CANDIDATES);
 
     const familyIdKey = findFieldKeyCaseInsensitive(sample, [
       'INPADOC Family ID', 'Family ID', 'family id', '專利家族號', '家族編號', 'inpadoc family', 'inpadoc'
@@ -136,108 +135,160 @@ const PatentTrendChart = ({ treeData, onCaptureReady, authState }) => {
 
   // Step 1: 公開公告合併 (Publication/Grant Merge) -> 專利件數母體 (Pieces)
   // Rule 1: 同 Application Number 僅保留 Publication Date 最新的一件，計為 1 件。無申請號者獨立保留。
+  // 此外，同公開公告號 (Publication Number) 僅計算為 1 件，不重複計算。
   const mergedPatents = useMemo(() => {
     if (!rawPatents || rawPatents.length === 0) return [];
-    const { appNum: appNumKey, pubDate: pubDateKey } = {
+    const { appNum: appNumKey, pubDate: pubDateKey, pubNum: pubNumKey } = {
       appNum: columnKeys.appNum,
-      pubDate: columnKeys.publication
+      pubDate: columnKeys.publication,
+      pubNum: columnKeys.pubNum
     };
 
+    let preMerged = [];
     if (!appNumKey) {
       // 若無申請號欄位，各專利視為獨立件
-      return rawPatents;
+      preMerged = rawPatents;
+    } else {
+      const appMap = new Map();
+      const noAppNumList = [];
+
+      rawPatents.forEach((p) => {
+        const rawApp = p[appNumKey];
+        const appNum = rawApp !== undefined && rawApp !== null ? String(rawApp).trim() : '';
+        if (!appNum || appNum.toLowerCase() === 'nan' || appNum === '-') {
+          noAppNumList.push(p);
+        } else {
+          if (!appMap.has(appNum)) {
+            appMap.set(appNum, []);
+          }
+          appMap.get(appNum).push(p);
+        }
+      });
+
+      const result = [...noAppNumList];
+      appMap.forEach((group) => {
+        if (group.length === 1) {
+          result.push(group[0]);
+          return;
+        }
+        // 取 Publication Date 最新的一件
+        const sorted = [...group].sort((a, b) => {
+          const dateA = pubDateKey ? (extract4DigitYear(a[pubDateKey]) || 0) : 0;
+          const dateB = pubDateKey ? (extract4DigitYear(b[pubDateKey]) || 0) : 0;
+          return dateB - dateA;
+        });
+        result.push(sorted[0]);
+      });
+      preMerged = result;
     }
 
-    const appMap = new Map();
-    const noAppNumList = [];
+    // 當統計中有同樣的公開公告號 (Publication Number) 時，僅計算為 1 件，不重複計算
+    const pubMap = new Map();
+    const noPubList = [];
 
-    rawPatents.forEach((p) => {
-      const rawApp = p[appNumKey];
-      const appNum = rawApp !== undefined && rawApp !== null ? String(rawApp).trim() : '';
-      if (!appNum || appNum.toLowerCase() === 'nan' || appNum === '-') {
-        noAppNumList.push(p);
+    preMerged.forEach((p) => {
+      const pubNum = getPatentPubNumber(p, pubNumKey);
+      if (!pubNum) {
+        noPubList.push(p);
       } else {
-        if (!appMap.has(appNum)) {
-          appMap.set(appNum, []);
+        if (!pubMap.has(pubNum)) {
+          pubMap.set(pubNum, p);
+        } else {
+          const existing = pubMap.get(pubNum);
+          const dateExisting = pubDateKey ? (extract4DigitYear(existing[pubDateKey]) || 0) : 0;
+          const dateNew = pubDateKey ? (extract4DigitYear(p[pubDateKey]) || 0) : 0;
+          if (dateNew > dateExisting) {
+            pubMap.set(pubNum, p);
+          }
         }
-        appMap.get(appNum).push(p);
       }
     });
 
-    const result = [...noAppNumList];
-    appMap.forEach((group) => {
-      if (group.length === 1) {
-        result.push(group[0]);
-        return;
-      }
-      // 取 Publication Date 最新的一件
-      const sorted = [...group].sort((a, b) => {
-        const dateA = pubDateKey ? (extract4DigitYear(a[pubDateKey]) || 0) : 0;
-        const dateB = pubDateKey ? (extract4DigitYear(b[pubDateKey]) || 0) : 0;
-        return dateB - dateA;
-      });
-      result.push(sorted[0]);
-    });
-
-    return result;
+    return [...noPubList, ...Array.from(pubMap.values())];
   }, [rawPatents, columnKeys]);
 
   // Step 2 & 3: 專利家族計數與合併 (Patent Family Consolidation) -> 專利案數母體 (Cases)
   // Rule 2 & 3: 以公開公告合併後的結果為基礎，同 INPADOC Family ID 歸為同家族 (1案)。
   // 同家族依國別優先順序 US > WO > EP > TW > CN > JP > KR 挑選一件代表專利。
+  // 此外，同公開公告號 (Publication Number) 僅計算為 1 案，不重複計算。
   const familyRepresentativePatents = useMemo(() => {
     if (!mergedPatents || mergedPatents.length === 0) return [];
     const { familyId: familyKey, pubNum: pubNumKey, publication: pubDateKey } = columnKeys;
 
+    let representatives = [];
     if (!familyKey) {
       // 若無家族號欄位，每件獨立為一案
-      return mergedPatents;
-    }
+      representatives = mergedPatents;
+    } else {
+      const familyGroups = new Map();
+      const noFamilyList = [];
 
-    const familyGroups = new Map();
-    const noFamilyList = [];
-
-    mergedPatents.forEach((p) => {
-      const rawFam = p[familyKey];
-      const famId = rawFam !== undefined && rawFam !== null ? String(rawFam).trim() : '';
-      if (!famId || famId.toLowerCase() === 'nan' || famId === '-') {
-        noFamilyList.push(p);
-      } else {
-        if (!familyGroups.has(famId)) {
-          familyGroups.set(famId, []);
+      mergedPatents.forEach((p) => {
+        const rawFam = p[familyKey];
+        const famId = rawFam !== undefined && rawFam !== null ? String(rawFam).trim() : '';
+        if (!famId || famId.toLowerCase() === 'nan' || famId === '-') {
+          noFamilyList.push(p);
+        } else {
+          if (!familyGroups.has(famId)) {
+            familyGroups.set(famId, []);
+          }
+          familyGroups.get(famId).push(p);
         }
-        familyGroups.get(famId).push(p);
-      }
-    });
-
-    const representatives = [...noFamilyList];
-
-    familyGroups.forEach((group) => {
-      if (group.length === 1) {
-        representatives.push(group[0]);
-        return;
-      }
-
-      // 依國別優先順序 (US > WO > EP > TW > CN > JP > KR)，同國別取公開日最新
-      const sorted = [...group].sort((a, b) => {
-        const pubA = pubNumKey ? String(a[pubNumKey] || '') : '';
-        const pubB = pubNumKey ? String(b[pubNumKey] || '') : '';
-        const ccA = extractCountryCode(pubA);
-        const ccB = extractCountryCode(pubB);
-
-        const rankA = COUNTRY_PRIORITY[ccA] || 99;
-        const rankB = COUNTRY_PRIORITY[ccB] || 99;
-        if (rankA !== rankB) return rankA - rankB;
-
-        const dateA = pubDateKey ? (extract4DigitYear(a[pubDateKey]) || 0) : 0;
-        const dateB = pubDateKey ? (extract4DigitYear(b[pubDateKey]) || 0) : 0;
-        return dateB - dateA;
       });
 
-      representatives.push(sorted[0]);
+      const repList = [...noFamilyList];
+
+      familyGroups.forEach((group) => {
+        if (group.length === 1) {
+          repList.push(group[0]);
+          return;
+        }
+
+        // 依國別優先順序 (US > WO > EP > TW > CN > JP > KR)，同國別取公開日最新
+        const sorted = [...group].sort((a, b) => {
+          const pubA = pubNumKey ? String(a[pubNumKey] || '') : '';
+          const pubB = pubNumKey ? String(b[pubNumKey] || '') : '';
+          const ccA = extractCountryCode(pubA);
+          const ccB = extractCountryCode(pubB);
+
+          const rankA = COUNTRY_PRIORITY[ccA] || 99;
+          const rankB = COUNTRY_PRIORITY[ccB] || 99;
+          if (rankA !== rankB) return rankA - rankB;
+
+          const dateA = pubDateKey ? (extract4DigitYear(a[pubDateKey]) || 0) : 0;
+          const dateB = pubDateKey ? (extract4DigitYear(b[pubDateKey]) || 0) : 0;
+          return dateB - dateA;
+        });
+
+        repList.push(sorted[0]);
+      });
+
+      representatives = repList;
+    }
+
+    // 當代表案中有相同的公開公告號 (Publication Number) 時，僅計算為 1 案，不重複計算
+    const pubMap = new Map();
+    const noPubList = [];
+
+    representatives.forEach((p) => {
+      const pubNum = getPatentPubNumber(p, pubNumKey);
+      if (!pubNum) {
+        noPubList.push(p);
+      } else {
+        if (!pubMap.has(pubNum)) {
+          pubMap.set(pubNum, p);
+        } else {
+          const existing = pubMap.get(pubNum);
+          const dateExisting = pubDateKey ? (extract4DigitYear(existing[pubDateKey]) || 0) : 0;
+          const dateNew = pubDateKey ? (extract4DigitYear(p[pubDateKey]) || 0) : 0;
+          if (dateNew > dateExisting) {
+            pubMap.set(pubNum, p);
+          }
+        }
+      }
     });
 
-    return representatives;
+    return [...noPubList, ...Array.from(pubMap.values())];
   }, [mergedPatents, columnKeys]);
 
   // Capture Image handler for PNG download

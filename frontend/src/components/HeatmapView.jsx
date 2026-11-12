@@ -27,6 +27,11 @@ import {
   formatComboLabel,
   isFormattedIpcCode
 } from '../utils/ipcUtils';
+import {
+  isTaxonomyRelated,
+  mergePatentsByAppAndPub,
+  getPatentPubNumber
+} from '../utils/patentUtils';
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -209,6 +214,16 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
     return { x: [], y: [], z: [] };
   }
 
+  // 取得專利唯一識別碼 (優先依通配公開公告號去重，無公開號者賦予物件穩定流水號)
+  const getPatentId = (p) => {
+    const pub = getPatentPubNumber(p);
+    if (pub) return pub;
+    if (!p.__stable_id) {
+      p.__stable_id = 'P_' + Math.random().toString(36).substr(2, 9);
+    }
+    return p.__stable_id;
+  };
+
   // Extract cartesian product of dimension values for a patent
   const getPatentCombos = (p, dims) => {
     const dimValues = dims.map(d => normalizeDimensionValue(p, d));
@@ -220,7 +235,7 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
     const comboCounts = new Map();
 
     patents.forEach(p => {
-      const pid = p['專利公開公告號'] || String(Math.random());
+      const pid = getPatentId(p);
       const combos = getPatentCombos(p, dims);
       combos.forEach(combo => {
         if (!combo || combo.length === 0 || combo.some(c => !c)) return;
@@ -266,7 +281,7 @@ function buildHeatmapMatrix(patents, xDims, yDims, xTopN = 'all', yTopN = 'all')
   const matrix = yArr.map(() => xArr.map(() => new Set()));
 
   patents.forEach(p => {
-    const pid = p['專利公開公告號'] || String(Math.random());
+    const pid = getPatentId(p);
     const xCombos = getPatentCombos(p, xDims).map(c => c.join(' > '));
     const yCombos = getPatentCombos(p, yDims).map(c => c.join(' > '));
 
@@ -502,19 +517,39 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
     yAxisTopN: 'all'
   });
 
+  // 判斷當前維度 (X軸、Y軸、篩選欄位) 是否包含技術1-3階、功效節點、應用領域
+  const isTaxonomyInvolved = useMemo(() => {
+    const activeDims = [
+      ...(chartConfig.xAxisFields || []),
+      ...(chartConfig.yAxisFields || []),
+      chartConfig.filterField
+    ].filter(Boolean);
+    return isTaxonomyRelated(activeDims);
+  }, [chartConfig.xAxisFields, chartConfig.yAxisFields, chartConfig.filterField]);
+
+  // 母體去重分流規則：
+  // 1. 若群組交集與技術1-3階、功效節點、應用領域任一相關 -> 不進行 Publication Number 去重 (保留多特徵展開)
+  // 2. 若與心智圖 5 大維度均無關 (純 Excel 維度交集) -> 進行公開公告合併 + Publication Number 去重
+  const basePatents = useMemo(() => {
+    if (isTaxonomyInvolved) {
+      return rawPatents;
+    }
+    return mergePatentsByAppAndPub(rawPatents);
+  }, [rawPatents, isTaxonomyInvolved]);
+
   // Multi-Item Data Filter
   const patents = useMemo(() => {
     const fv = chartConfig.filterValues;
     if (!chartConfig.filterField || !fv || fv.length === 0) {
-      return rawPatents;
+      return basePatents;
     }
     const f = chartConfig.filterField;
     const vs = new Set(fv);
-    return rawPatents.filter(p => {
+    return basePatents.filter(p => {
       const vals = normalizeDimensionValue(p, f);
       return vals.some(v => vs.has(v));
     });
-  }, [rawPatents, chartConfig.filterField, chartConfig.filterValues]);
+  }, [basePatents, chartConfig.filterField, chartConfig.filterValues]);
 
   // Dimension zone state (synchronized with chartConfig)
   const [zones, setZones] = useState({
@@ -595,9 +630,21 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
         return xCombos.includes(targetX) && yCombos.includes(targetY);
       });
 
-      const uniquePatents = Array.from(
-        new Map(matchedPatents.map(p => [p["專利公開公告號"], p])).values()
-      );
+      const pubMap = new Map();
+      const noPubList = [];
+
+      matchedPatents.forEach(p => {
+        const pub = getPatentPubNumber(p);
+        if (pub) {
+          if (!pubMap.has(pub)) {
+            pubMap.set(pub, p);
+          }
+        } else {
+          noPubList.push(p);
+        }
+      });
+
+      const uniquePatents = [...Array.from(pubMap.values()), ...noPubList];
 
       if (uniquePatents.length > 0) {
         setSelectedCellPatents({
@@ -1367,7 +1414,7 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 }
               </div>
             )}
-            <div>📄 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>分析專利件數：</strong>{patents.length} / {rawPatents.length}</div>
+            <div>📄 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>分析專利件數：</strong>{patents.length} / {basePatents.length}{!isTaxonomyInvolved ? ' (已去重)' : ''}</div>
             <div>📐 <strong style={{ color: theme === 'dark' ? '#f6f2cfff' : '#475569' }}>全矩陣：</strong>{rawMatrix.x.length} × {rawMatrix.y.length}</div>
             {!showEmpty && (removedCols > 0 || removedRows > 0) && (
               <div style={{ color: 'rgba(251,191,36,0.7)', fontSize: '0.68rem' }}>

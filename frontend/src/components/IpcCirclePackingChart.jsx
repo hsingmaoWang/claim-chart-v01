@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { Sun, Moon, FileText, RotateCcw, ChevronRight, Layers, Info, Award, AlertCircle, AlertTriangle } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { parseIpcCode } from '../utils/ipcUtils';
+import { mergePatentsByAppAndPub, getPatentPubNumber } from '../utils/patentUtils';
 
 // IPC 八大部主題色彩系統（日間 / 夜間模式分開調配）
 const SECTION_PALETTES = {
@@ -67,7 +68,7 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
   const [definitions, setDefinitions] = useState({});
   const [fullPaths, setFullPaths] = useState({});
 
-  // 1. 取得專利資料（公開公告合併後）
+  // 1. 取得專利資料並執行公開公告合併 + 同 Publication Number 去重
   const rawPatents = useMemo(() => {
     if (!treeData) return [];
     if (Array.isArray(treeData.patents)) return treeData.patents;
@@ -77,11 +78,16 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
     return [];
   }, [treeData]);
 
-  // 統計家族案數與件數
-  const totalPieces = rawPatents.length;
+  // 母體去重 (公開公告合併 + 同公開公告號去重只計1件)
+  const cleanedPatents = useMemo(() => {
+    return mergePatentsByAppAndPub(rawPatents);
+  }, [rawPatents]);
+
+  // 統計家族案數與件數 (以去重後之專利件數母體為基準)
+  const totalPieces = cleanedPatents.length;
   const totalCases = useMemo(() => {
-    if (!rawPatents.length) return 0;
-    const sample = rawPatents[0] || {};
+    if (!cleanedPatents.length) return 0;
+    const sample = cleanedPatents[0] || {};
     const familyKey = Object.keys(sample).find(k => {
       const lower = k.toLowerCase().trim();
       return lower.includes('family') || lower.includes('家族');
@@ -89,7 +95,7 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
     if (!familyKey) return totalPieces;
     const famSet = new Set();
     let noFamCount = 0;
-    rawPatents.forEach(p => {
+    cleanedPatents.forEach(p => {
       const f = p[familyKey];
       if (f && String(f).trim() && !['nan', '-', 'none'].includes(String(f).toLowerCase().trim())) {
         famSet.add(String(f).trim());
@@ -98,12 +104,12 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
       }
     });
     return famSet.size + noFamCount;
-  }, [rawPatents, totalPieces]);
+  }, [cleanedPatents, totalPieces]);
 
   // 2. 依專利清單建構 5 階層巢狀樹狀結構 & 計算第 4 階 (Main Group 主目) 佔比 Top 5
   // 規範：僅接受 "IPC Subgroup" 欄位，不採用其他欄位。若無 "IPC Subgroup" 欄位，則顯示來源資料缺乏"IPC Subgroup"欄位錯誤訊息
   const { hierarchyRoot, uniqueIpcCodes, top5MainGroups, allMainGroups, hasIpcSubgroupCol, ipcColName } = useMemo(() => {
-    if (!rawPatents.length) {
+    if (!cleanedPatents.length) {
       return {
         hierarchyRoot: null,
         uniqueIpcCodes: [],
@@ -121,8 +127,8 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
     };
 
     let ipcCol = null;
-    for (let i = 0; i < Math.min(rawPatents.length, 20); i++) {
-      const p = rawPatents[i];
+    for (let i = 0; i < Math.min(cleanedPatents.length, 20); i++) {
+      const p = cleanedPatents[i];
       if (p && typeof p === 'object') {
         const found = Object.keys(p).find(isIpcSubgroupKey);
         if (found) {
@@ -146,8 +152,8 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
     const sectionMap = new Map();
     const codeCollector = new Set();
 
-    rawPatents.forEach(patent => {
-      const pNo = patent['專利公開公告號'] || patent['publication number'] || patent['專利號'] || 'P';
+    cleanedPatents.forEach(patent => {
+      const pNo = getPatentPubNumber(patent) || ('P_' + Math.random().toString(36).substr(2, 9));
       const rawIpcValue = ipcCol ? patent[ipcCol] : null;
       if (!rawIpcValue) return;
 

@@ -480,16 +480,14 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
     // 著色色彩漸層 (日夜間調配)
     const choroplethColorscale = isDark
       ? [
-        [0.0, 'rgba(30, 41, 59, 0.9)'],
-        [0.001, '#559dfbff'],
+        [0.0, '#559dfbff'],
         [0.2, '#4ab0f8ff'],
         [0.5, '#56f72dff'],
         [0.8, '#f8e238ff'],
         [1.0, '#fa3939ff']
       ]
       : [
-        [0.0, '#f0f9ff'],
-        [0.001, '#559dfbff'],
+        [0.0, '#559dfbff'],
         [0.2, '#4ab0f8ff'],
         [0.5, '#56f72dff'],
         [0.8, '#f8e238ff'],
@@ -509,14 +507,15 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       showscale: true,
       colorbar: {
         title: {
-          text: `<b>${chartSubtype === 'application' ? '申請件數' : '所屬案數'}</b>`,
-          font: { color: isDark ? '#e2e8f0' : '#334155', size: 12 }
+          text: '' // 標題改由 layout.annotations 精確置中對齊並向上拉開間距
         },
-        tickfont: { color: isDark ? '#94a3b8' : '#64748b', size: 11 },
+        tickfont: { color: isDark ? '#94a3b8' : '#64748b', size: 12 },
         thickness: 14,
         len: 0.6,
         x: 0.98,
-        y: 0.5
+        y: 0.5,
+        xanchor: 'center',
+        yanchor: 'middle'
       },
       marker: {
         line: {
@@ -526,16 +525,18 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       }
     };
 
-    // (2) 頂層數值標籤文字 (Scattergeo Trace) - 僅直接標示件數或案數
+    // (2) 頂層數值標籤文字 (Scattergeo Trace) - 直接標示件數或案數，並賦予擴大透明熱區與 Tooltip
     const labelLats = [];
     const labelLons = [];
     const labelTexts = [];
+    const labelHoverTexts = [];
 
     iso3Map.forEach((entry) => {
       if (entry.lat && entry.lon && entry.count > 0) {
         labelLats.push(entry.lat);
         labelLons.push(entry.lon);
         labelTexts.push(`<b>${entry.count}</b>`);
+        labelHoverTexts.push(entry.details.join('<br>'));
       }
     });
 
@@ -543,15 +544,21 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       type: 'scattergeo',
       lat: labelLats,
       lon: labelLons,
-      mode: 'text',
+      mode: 'text+markers',
       text: labelTexts,
       textfont: {
         family: 'Inter, system-ui, sans-serif',
-        size: 11,
+        size: 14,
         color: isDark ? '#ffffff' : '#0f172a'
       },
       textposition: 'middle center',
-      hoverinfo: 'none'
+      marker: {
+        size: 36, // 擴大感應熱區半徑，當滑鼠接近標籤數字時即可極容易觸發 Tooltip
+        color: 'rgba(0,0,0,0)', // 完全透明，不遮擋底層顏色與邊界
+        opacity: 0
+      },
+      hoverinfo: 'text',
+      hovertext: labelHoverTexts
     };
 
     return [choroplethTrace, scatterGeoTrace];
@@ -560,6 +567,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
   // 7. Plotly Layout 佈局設定
   const plotlyLayout = useMemo(() => {
     const titleText = chartSubtype === 'application' ? '專利申請國分析圖' : '專利所屬國分析圖';
+    const colorbarTitleText = chartSubtype === 'application' ? '申請件數' : '所屬案數';
 
     return {
       title: {
@@ -571,10 +579,38 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
         },
         y: 0.97
       },
+      hovermode: 'closest',
+      hoverdistance: 40,
+      hoverlabel: {
+        bgcolor: isDark ? '#1e293b' : '#ffffff',
+        bordercolor: isDark ? '#38bdf8' : '#0284c7',
+        font: {
+          family: 'Inter, system-ui, sans-serif',
+          size: 13,
+          color: isDark ? '#f8fafc' : '#0f172a'
+        }
+      },
+      annotations: [
+        {
+          xref: 'paper',
+          yref: 'paper',
+          x: 0.99,
+          y: 0.81, // 適度向上移動，增加文字底部與 colorscale bar 上端的空間
+          // xanchor: 'center', // 讓文字與 colorscale bar (x: 0.98) 垂直中線精確置中對齊
+          yanchor: 'bottom',
+          text: `<b>${colorbarTitleText}</b>`,
+          showarrow: false,
+          font: {
+            color: isDark ? '#e2e8f0' : '#334155',
+            size: 13,
+            family: 'Inter, system-ui, sans-serif'
+          }
+        }
+      ],
       geo: {
         showframe: false,
         showcoastlines: true,
-        coastlinecolor: isDark ? '#475569' : '#cbd5e1',
+        coastlinecolor: isDark ? '#1354a4ff' : '#c7defaff',
         projection: {
           type: 'natural earth'
         },
@@ -913,7 +949,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: isDark ? '#f8fafc' : '#0f172a' }}>
+            <span style={{ fontSize: '1.0rem', fontWeight: 700, color: isDark ? '#f8fafc' : '#0f172a' }}>
               {chartSubtype === 'application' ? '申請國別排行' : '所屬國別排行'}
             </span>
             <span style={{ fontSize: '0.78rem', color: isDark ? '#94a3b8' : '#64748b' }}>
@@ -981,13 +1017,13 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       <span
                         style={{
-                          fontSize: '0.75rem',
+                          fontSize: '0.8rem',
                           fontWeight: 700,
                           color: idx < 3 ? '#f59e0b' : isDark ? '#94a3b8' : '#64748b',
                           minWidth: '16px'
                         }}
                       >
-                        #{idx + 1}
+                        {idx + 1}
                       </span>
                       <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
                         {item.label}
