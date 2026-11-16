@@ -654,57 +654,134 @@ const MindMapTree = ({
 
             {/* Patent List Modal / Panel */}
             {selectedPatents && (
-                <div style={{ position: 'absolute', top: 0, right: 0, width: '450px', height: '100%', background: 'rgba(2, 6, 23, 0.95)', borderLeft: '1px solid rgba(6,182,212,0.5)', zIndex: 20, backdropFilter: 'blur(10px)', color: '#fff', boxShadow: '-10px 0 20px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    width: '450px',
+                    height: '100%',
+                    background: theme === 'dark' ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
+                    borderLeft: `1px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.35)' : 'rgba(2, 132, 199, 0.25)'}`,
+                    zIndex: 30,
+                    backdropFilter: 'blur(12px)',
+                    color: theme === 'dark' ? '#f1f5f9' : '#1e293b',
+                    boxShadow: theme === 'dark' ? '-10px 0 25px rgba(0,0,0,0.6)' : '-10px 0 20px rgba(0,0,0,0.15)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden'
+                }}>
 
                     {/* Sticky Header Section */}
-                    <div style={{ background: 'rgba(2, 6, 23, 0.98)', zIndex: 30, padding: '1.5rem 1.5rem 0 1.5rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-                            <h3 style={{ fontSize: '1.2rem', color: '#22d3ee', margin: 0, textShadow: '0 0 5px rgba(34,211,238,0.5)' }}>
-                                分類: {selectedPatents.category}
-                                <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginLeft: '0.5rem' }}>({selectedPatents.patents.length})</span>
+                    <div style={{
+                        background: theme === 'dark' ? 'rgba(15, 23, 42, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+                        zIndex: 35,
+                        padding: '1.25rem 1.25rem 0.5rem 1.25rem',
+                        borderBottom: `1px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(2, 132, 199, 0.15)'}`
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                            <h3 style={{
+                                fontSize: '1.15rem',
+                                color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                                margin: 0,
+                                fontWeight: '700',
+                                textShadow: theme === 'dark' ? '0 0 5px rgba(56, 189, 248, 0.5)' : 'none'
+                            }}>
+                                🧠 分類: {selectedPatents.category}
                             </h3>
-                            <button onClick={() => setSelectedPatents(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.8rem', lineHeight: 1 }}>&times;</button>
+                            <button
+                                onClick={() => setSelectedPatents(null)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                    fontSize: '1.5rem',
+                                    lineHeight: 1,
+                                    padding: '0.2rem'
+                                }}
+                            >
+                                &times;
+                            </button>
                         </div>
 
-                        {/* Global Hierarchy Path Tags - Color Coded By Level */}
-                        <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center', borderBottom: '1px solid rgba(6,182,212,0.3)', paddingBottom: '1.2rem' }}>
-                            {selectedPatents.path && selectedPatents.path.map((step, si) => {
-                                const levelColors = [
-                                    { bg: 'rgba(14,165,233,0.15)', text: '#38bdf8', border: 'rgba(14,165,233,0.3)' },
-                                    { bg: 'rgba(99,102,241,0.15)', text: '#818cf8', border: 'rgba(99,102,241,0.3)' },
-                                    { bg: 'rgba(16,185,129,0.15)', text: '#34d399', border: 'rgba(16,185,129,0.3)' },
-                                    { bg: 'rgba(245,158,11,0.15)', text: '#fbbf24', border: 'rgba(245,158,11,0.3)' },
-                                    { bg: 'rgba(236,72,153,0.15)', text: '#f472b6', border: 'rgba(236,72,153,0.3)' }
-                                ];
-                                const currentColor = levelColors[si] || levelColors[levelColors.length - 1];
-                                const nextColor = levelColors[si + 1] || levelColors[levelColors.length - 1];
-
-                                return (
-                                    <React.Fragment key={si}>
-                                        <span style={{ fontSize: '0.75rem', background: currentColor.bg, color: currentColor.text, border: `1px solid ${currentColor.border}`, borderRadius: '0.3rem', padding: '0.15rem 0.5rem' }}>
-                                            {step}
-                                        </span>
-                                        {si < selectedPatents.path.length - 1 && (
-                                            <span style={{ color: nextColor.text, fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0.1rem' }}>&gt;</span>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            })}
+                        {/* Global Hierarchy Path Tags */}
+                        <div style={{
+                            marginBottom: '0.8rem',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.35rem',
+                            alignItems: 'center'
+                        }}>
+                            {selectedPatents.path && selectedPatents.path.map((step, si) => (
+                                <React.Fragment key={si}>
+                                    <span style={{
+                                        fontSize: '0.75rem',
+                                        background: theme === 'dark' ? 'rgba(14, 165, 233, 0.18)' : 'rgba(14, 165, 233, 0.1)',
+                                        color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                                        border: `1px solid ${theme === 'dark' ? 'rgba(14, 165, 233, 0.35)' : 'rgba(14, 165, 233, 0.2)'}`,
+                                        borderRadius: '0.3rem',
+                                        padding: '0.15rem 0.45rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        {step}
+                                    </span>
+                                    {si < selectedPatents.path.length - 1 && (
+                                        <span style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: '0.75rem' }}>&gt;</span>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                            <span style={{
+                                fontSize: '0.75rem',
+                                fontWeight: '700',
+                                color: '#10b981',
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '0.3rem',
+                                marginLeft: 'auto'
+                            }}>
+                                共 {selectedPatents.patents.length} 件
+                            </span>
                         </div>
                     </div>
 
                     {/* Scrollable Patent content Section */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
-                        {selectedPatents.patents.map((p, i) => {
-                            return (
-                                <div key={i} style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', marginBottom: '1rem', borderRadius: '0.5rem', border: '1px solid rgba(6,182,212,0.1)' }}>
-                                    <h4 style={{ color: '#67e8f9', margin: '0 0 0.8rem 0', fontSize: '1.1rem' }}>🔖 {i + 1}. {p['專利公開公告號'] || '無號碼'}</h4>
-                                    <p style={{ fontSize: '0.9rem', marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.5' }}><strong style={{ color: '#e2e8f0' }}>💡 AI 技術簡述:</strong> <br /> {p['AI技術簡述']}</p>
-                                    <p style={{ fontSize: '0.9rem', marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.5' }}><strong style={{ color: '#e2e8f0' }}>⚙️ 技術特徵手段:</strong> <br /> {p['技術特徵手段']}</p>
-                                    <p style={{ fontSize: '0.9rem', color: '#cbd5e1', margin: 0, lineHeight: '1.5' }}><strong style={{ color: '#e2e8f0' }}>✅ 解決問題/效益:</strong> <br /> {p['解決的技術問題或技術效益']}</p>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                        {selectedPatents.patents.map((p, i) => (
+                            <div
+                                key={i}
+                                style={{
+                                    padding: '1.1rem',
+                                    background: theme === 'dark' ? 'rgba(14, 165, 233, 0.04)' : 'rgba(14, 165, 233, 0.02)',
+                                    marginBottom: '1rem',
+                                    borderRadius: '0.6rem',
+                                    border: `1px solid ${theme === 'dark' ? 'rgba(14, 165, 233, 0.15)' : 'rgba(14, 165, 233, 0.1)'}`,
+                                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
+                                }}
+                            >
+                                <h4 style={{
+                                    color: theme === 'dark' ? '#38bdf8' : '#0284c7',
+                                    margin: '0 0 0.75rem 0',
+                                    fontSize: '1rem',
+                                    fontWeight: '700'
+                                }}>
+                                    🔖 {i + 1}. {p['專利公開公告號'] || '無號碼'}
+                                </h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                                    <p style={{ fontSize: '0.85rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.5' }}>
+                                        <strong style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'block', marginBottom: '0.15rem' }}>💡 AI 技術簡述:</strong>
+                                        {p['AI技術簡述']}
+                                    </p>
+                                    <p style={{ fontSize: '0.85rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.5' }}>
+                                        <strong style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'block', marginBottom: '0.15rem' }}>⚙️ 技術特徵手段:</strong>
+                                        {p['技術特徵手段']}
+                                    </p>
+                                    <p style={{ fontSize: '0.85rem', margin: 0, color: theme === 'dark' ? '#cbd5e1' : '#475569', lineHeight: '1.5' }}>
+                                        <strong style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a', display: 'block', marginBottom: '0.15rem' }}>✅ 解決問題/效益:</strong>
+                                        {p['解決的技術問題或技術效益']}
+                                    </p>
                                 </div>
-                            );
-                        })}
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}

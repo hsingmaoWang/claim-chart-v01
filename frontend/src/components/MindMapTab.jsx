@@ -4,6 +4,7 @@ import Loader from './Loader';
 import MindMapTree from './MindMapTree';
 import ColumnSelectionModal from './ColumnSelectionModal';
 import ClassificationSettingsModal from './ClassificationSettingsModal';
+import PublicationConflictModal from './PublicationConflictModal';
 import { Upload, Plus, Trash2, RotateCcw, ArrowLeft, Check, Sparkles, Search, Layers, HelpCircle, Edit2, X, Settings, TrendingUp, BarChart2, Sun, Moon, Globe } from 'lucide-react';
 
 const HeatmapView = lazy(() => import('./HeatmapView'));
@@ -33,6 +34,10 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const [pendingFile, setPendingFile] = useState(null);
   const [selectedColumnsState, setSelectedColumnsState] = useState([]);
 
+  // Publication Conflict Modal States (專利公開公告號 vs Publication Number 比對與校正)
+  const [publicationConflictData, setPublicationConflictData] = useState(null);
+  const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
+
   const [config, setConfig] = useState({
     app_area_count: '3~7',
     tech1_count: '3~5',
@@ -56,6 +61,27 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
   const ipcStatsRef = useRef(null);
   const handleIpcStatsReady = useCallback((stats) => {
     ipcStatsRef.current = stats;
+  }, []);
+
+  // 國別手動標註修改記錄 (useRef 不觸發 re-render，僅匯出時讀取)
+  // 格式: [{ pub_num, field_name, old_value, new_value, mode }]
+  const countryEditsRef = useRef([]);
+
+  const handleUpdatePatents = useCallback((updatedPatents, countryEditRecords) => {
+    setTreeData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        patents: updatedPatents
+      };
+    });
+    // 若有傳入國別標註修改記錄，累積儲存（用於匯出時標記藍色字體）
+    if (countryEditRecords && countryEditRecords.length > 0) {
+      countryEditsRef.current = [
+        ...countryEditsRef.current,
+        ...countryEditRecords
+      ];
+    }
   }, []); // 穩定引用，不造成子元件 re-render
 
   // Stage 1 Taxonomy States
@@ -170,6 +196,16 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       }
 
       const columnData = await response.json();
+
+      // 最優先檢查：是否同時包含「專利公開公告號」與「Publication Number」兩欄位且有衝突
+      if (columnData && columnData.has_publication_conflicts) {
+        setPublicationConflictData(columnData);
+        setPendingFile(file);
+        setIsConflictModalOpen(true);
+        setAppState('idle');
+        return;
+      }
+
       setColumnModalData(columnData);
       setPendingFile(file);
       setIsColumnModalOpen(true);
@@ -184,6 +220,53 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       }
       setAppState('idle');
     }
+  };
+
+  const handleConfirmPublicationConflicts = async (resolutions) => {
+    if (!publicationConflictData) return;
+    setAppState('preprocessing');
+    setLoaderMessage('正在校正專利公開公告號並標記藍色字體...');
+    setIsConflictModalOpen(false);
+
+    try {
+      const response = await fetch('/api/mindmap/resolve_publication_conflicts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getAuthHeaders ? getAuthHeaders() : {})
+        },
+        body: JSON.stringify({
+          file_id: publicationConflictData.file_id,
+          resolutions: resolutions
+        })
+      });
+
+      if (!response.ok) {
+        let errMessage = `Server error: ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) errMessage = errData.detail;
+        } catch (e) { }
+        throw new Error(errMessage);
+      }
+
+      const columnData = await response.json();
+      setPublicationConflictData(null);
+      setColumnModalData(columnData);
+      setIsColumnModalOpen(true);
+      setAppState('idle');
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(err.message || '校正公開公告號失敗，請重新嘗試。');
+      setAppState('idle');
+    }
+  };
+
+  const handleCancelPublicationConflicts = () => {
+    setIsConflictModalOpen(false);
+    setPublicationConflictData(null);
+    setPendingFile(null);
+    setAppState('idle');
   };
 
   const executePreprocess = async (selectedCols, isScreeningEnabled, criteriaText) => {
@@ -564,7 +647,10 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
       const payload = {
         ...treeData,
         stage1_taxonomy: stage1Taxonomy,
-        ...(ipcStatsRef.current ? { ipc_stats: ipcStatsRef.current } : {})
+        ...(ipcStatsRef.current ? { ipc_stats: ipcStatsRef.current } : {}),
+        file_id: fileInfo?.file_id,
+        modified_publication_numbers: columnModalData?.modified_publication_numbers || [],
+        country_edit_records: countryEditsRef.current || []
       };
 
       const response = await fetch('/api/mindmap/export', {
@@ -1210,7 +1296,7 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
         }}>
           <div className="glass-panel" style={{
             padding: '3.5rem 2rem', borderRadius: '1.5rem',
-            border: '1px solid var(--color-border)',
+            border: '2px solid rgba(154, 156, 157, 0.4)',
             background: 'rgba(204, 217, 217, 0.97)',
             maxWidth: '480px', width: '90%',
             textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
@@ -1847,7 +1933,12 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
 
               <div style={{ display: viewMode === 'country' ? 'block' : 'none', width: '100%', height: '100%' }}>
                 <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '600px', color: 'var(--color-text-muted)', fontSize: '1rem' }}>載入國別分析圖...</div>}>
-                  <CountryAnalysisChart treeData={treeData} onCaptureReady={viewMode === 'country' ? setCaptureImage : undefined} authState={authState} />
+                  <CountryAnalysisChart
+                    treeData={treeData}
+                    onCaptureReady={viewMode === 'country' ? setCaptureImage : undefined}
+                    authState={authState}
+                    onUpdatePatents={handleUpdatePatents}
+                  />
                 </Suspense>
               </div>
 
@@ -2179,6 +2270,13 @@ const MindMapTab = ({ authState, getAuthHeaders }) => {
         onClose={() => setIsClassificationModalOpen(false)}
         onConfirm={handleConfirmClassificationSettings}
         currentConfig={config}
+      />
+      <PublicationConflictModal
+        isOpen={isConflictModalOpen}
+        data={publicationConflictData}
+        onConfirm={handleConfirmPublicationConflicts}
+        onCancel={handleCancelPublicationConflicts}
+        isDark={treeTheme === 'dark'}
       />
     </div >
   );

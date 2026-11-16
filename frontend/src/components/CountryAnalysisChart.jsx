@@ -1,13 +1,15 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
-import { Sun, Moon, Globe, Info, AlertTriangle } from 'lucide-react';
+import { Sun, Moon, Globe, Info, AlertTriangle, Search, X, Check, CheckCircle2, Edit3, ExternalLink, RefreshCw } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import {
   COUNTRY_METADATA,
   getCountryMeta,
   parseAssigneeCountry,
-  extractApplicationCountry
+  extractApplicationCountry,
+  appendCountryCodeToAssignee
 } from '../utils/countryUtils';
 
 const Plot = createPlotlyComponent(Plotly);
@@ -16,6 +18,65 @@ const Plot = createPlotlyComponent(Plotly);
 const COUNTRY_PRIORITY = {
   'US': 1, 'WO': 2, 'EP': 3, 'TW': 4, 'CN': 5, 'JP': 6, 'KR': 7
 };
+
+// ── Choropleth 色階定義（與地圖色階完全一致）──
+// 格式：[[position 0~1, hexColor], ...]
+const CHOROPLETH_COLORSCALE = [
+  [0.0, '#559dfb'],
+  [0.2, '#4ab0f8'],
+  [0.5, '#4de527ff'],
+  [0.8, '#f8e238'],
+  [1.0, '#fa3939']
+];
+
+/**
+ * 將百分比（0~100）依 choropleth 色階插值計算對應 CSS 顏色字串。
+ * @param {number} percent - 0 到 100 的數值（代表此列在所有國家中的佔比）
+ * @param {number} maxPercent - 當前顯示列表中最高佔比，用於歸一化（預設 100）
+ * @returns {string} CSS hex 顏色
+ */
+function getColorFromChoroplethScale(percent, maxPercent = 100) {
+  const t = maxPercent > 0 ? Math.min(1, Math.max(0, percent / maxPercent)) : 0;
+  const scale = CHOROPLETH_COLORSCALE;
+
+  // 找插值區間
+  let i = 0;
+  while (i < scale.length - 2 && t > scale[i + 1][0]) i++;
+  const [t0, c0] = scale[i];
+  const [t1, c1] = scale[i + 1];
+  const ratio = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+
+  // hex -> rgb 插值
+  const hexToRgb = (hex) => {
+    const h = hex.replace('#', '');
+    return [
+      parseInt(h.substring(0, 2), 16),
+      parseInt(h.substring(2, 4), 16),
+      parseInt(h.substring(4, 6), 16)
+    ];
+  };
+
+  const [r0, g0, b0] = hexToRgb(c0);
+  const [r1, g1, b1] = hexToRgb(c1);
+
+  const r = Math.round(r0 + (r1 - r0) * ratio);
+  const g = Math.round(g0 + (g1 - g0) * ratio);
+  const b = Math.round(b0 + (b1 - b0) * ratio);
+
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// 常用國別列表（供手動分類快速填入）
+const POPULAR_COUNTRIES = [
+  { code: 'TW', name: '台灣', flag: '🇹🇼' },
+  { code: 'US', name: '美國', flag: '🇺🇸' },
+  { code: 'CN', name: '中國', flag: '🇨🇳' },
+  { code: 'JP', name: '日本', flag: '🇯🇵' },
+  { code: 'KR', name: '韓國', flag: '🇰🇷' },
+  { code: 'DE', name: '德國', flag: '🇩🇪' },
+  { code: 'GB', name: '英國', flag: '🇬🇧' },
+  { code: 'FR', name: '法國', flag: '🇫🇷' }
+];
 
 const extractCountryCode = (pubNumber) => {
   if (!pubNumber) return '';
@@ -64,7 +125,7 @@ const findFieldKeyCaseInsensitive = (sampleItem, candidateKeys) => {
   return null;
 };
 
-const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
+const CountryAnalysisChart = ({ treeData, onCaptureReady, authState, onUpdatePatents }) => {
   // 日間 / 夜間模式狀態 (預設 light)
   const [theme, setTheme] = useState('light');
   const isDark = theme === 'dark';
@@ -74,6 +135,13 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
 
   // 選中突顯的國家 (點擊側邊欄表格可高亮聚焦)
   const [selectedCountry, setSelectedCountry] = useState(null);
+
+  // 未註明/無法識別案件彈窗狀態
+  const [isUnknownModalOpen, setIsUnknownModalOpen] = useState(false);
+  const [countryCodeInputs, setCountryCodeInputs] = useState({});
+  const [syncSameAssignee, setSyncSameAssignee] = useState(true);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   const chartContainerRef = useRef(null);
 
@@ -127,13 +195,18 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       '申請人', '專利權人', '受讓人', 'Original Assignee', 'Standardized Assignee'
     ]);
 
+    const titleKey = findFieldKeyCaseInsensitive(sample, [
+      'Title', 'title', '專利名稱', '名稱', 'Invention Title', 'invention title', '專利案名'
+    ]);
+
     return {
       appNum: appNumKey,
       pubNum: pubNumKey,
       pubDate: pubDateKey,
       familyId: familyIdKey,
       pubCountry: pubCountryKey,
-      assignee: assigneeKey
+      assignee: assigneeKey,
+      title: titleKey
     };
   }, [rawPatents]);
 
@@ -319,6 +392,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
         countryList: [],
         countryCounts: {},
         unknownCount: 0,
+        unknownItems: [],
         hasMissingField: false,
         missingFieldName: ''
       };
@@ -326,11 +400,20 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
 
     const counts = {};
     let unknownCount = 0;
+    const unknownItems = [];
     const seenPubNums = new Set();
 
     if (isAppMode) {
       // 申請國分析
       if (!pubCountryKey && !pubNumKey) {
+        const unItems = activePatents.map((p, idx) => ({
+          patent: p,
+          pubNum: pubNumKey && p[pubNumKey] ? String(p[pubNumKey]).trim() : '',
+          rawAssignee: assigneeKey && p[assigneeKey] ? String(p[assigneeKey]).trim() : '',
+          title: (columnKeys.title && p[columnKeys.title]) || p['Title'] || p['專利名稱'] || p['title'] || p['Invention Title'] || '',
+          appNum: columnKeys.appNum && p[columnKeys.appNum] ? String(p[columnKeys.appNum]).trim() : '',
+          itemKey: (pubNumKey && p[pubNumKey]) || (columnKeys.appNum && p[columnKeys.appNum]) || `app_unknown_${idx + 1}`
+        }));
         return {
           unit,
           total: activePatents.length,
@@ -338,6 +421,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
           countryList: [],
           countryCounts: {},
           unknownCount: activePatents.length,
+          unknownItems: unItems,
           hasMissingField: true,
           missingFieldName: 'Publication Country Code 或 Publication Number'
         };
@@ -359,6 +443,18 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
           counts[cCode] = (counts[cCode] || 0) + 1;
         } else {
           unknownCount++;
+          const pubNo = pubNumKey && p[pubNumKey] !== undefined && p[pubNumKey] !== null ? String(p[pubNumKey]).trim() : '';
+          const rawAss = assigneeKey && p[assigneeKey] !== undefined && p[assigneeKey] !== null ? String(p[assigneeKey]).trim() : '';
+          const title = (columnKeys.title && p[columnKeys.title]) || p['Title'] || p['專利名稱'] || p['title'] || p['Invention Title'] || '';
+          const appNo = columnKeys.appNum && p[columnKeys.appNum] !== undefined && p[columnKeys.appNum] !== null ? String(p[columnKeys.appNum]).trim() : '';
+          unknownItems.push({
+            patent: p,
+            pubNum: pubNo,
+            rawAssignee: rawAss,
+            title: title,
+            appNum: appNo,
+            itemKey: pubNo || appNo || `app_unknown_${unknownCount}`
+          });
         }
       });
     } else {
@@ -371,6 +467,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
           countryList: [],
           countryCounts: {},
           unknownCount: activePatents.length,
+          unknownItems: [],
           hasMissingField: true,
           missingFieldName: 'Assignee/Applicant (申請人/專利權人)'
         };
@@ -393,6 +490,18 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
           counts[cCode] = (counts[cCode] || 0) + 1;
         } else {
           unknownCount++;
+          const pubNo = pubNumKey && p[pubNumKey] !== undefined && p[pubNumKey] !== null ? String(p[pubNumKey]).trim() : '';
+          const rawAss = rawAssignee !== undefined && rawAssignee !== null ? String(rawAssignee).trim() : '';
+          const title = (columnKeys.title && p[columnKeys.title]) || p['Title'] || p['專利名稱'] || p['title'] || p['Invention Title'] || '';
+          const appNo = columnKeys.appNum && p[columnKeys.appNum] !== undefined && p[columnKeys.appNum] !== null ? String(p[columnKeys.appNum]).trim() : '';
+          unknownItems.push({
+            patent: p,
+            pubNum: pubNo,
+            rawAssignee: rawAss,
+            title: title,
+            appNum: appNo,
+            itemKey: pubNo || appNo || `ass_unknown_${unknownCount}`
+          });
         }
       });
     }
@@ -433,6 +542,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       countryList,
       countryCounts: counts,
       unknownCount,
+      unknownItems,
       hasMissingField: false,
       missingFieldName: ''
     };
@@ -477,22 +587,9 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       choroplethText.push(entry.details.join('<br>'));
     });
 
-    // 著色色彩漸層 (日夜間調配)
-    const choroplethColorscale = isDark
-      ? [
-        [0.0, '#559dfbff'],
-        [0.2, '#4ab0f8ff'],
-        [0.5, '#56f72dff'],
-        [0.8, '#f8e238ff'],
-        [1.0, '#fa3939ff']
-      ]
-      : [
-        [0.0, '#559dfbff'],
-        [0.2, '#4ab0f8ff'],
-        [0.5, '#56f72dff'],
-        [0.8, '#f8e238ff'],
-        [1.0, '#fa3939ff']
-      ];
+    // 著色色彩漸層：統一使用頂層定義的 CHOROPLETH_COLORSCALE 常數
+    // （Plotly 要求格式帶透明度 hex8，但這裡直接使用 hex6 也相容）
+    const choroplethColorscale = CHOROPLETH_COLORSCALE;
 
     // (1) 底層區塊著色圖 (Choropleth Trace)
     const choroplethTrace = {
@@ -725,6 +822,234 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
       onCaptureReady(() => captureImage);
     }
   }, [captureImage, onCaptureReady]);
+
+  // 篩選未識別案件清單
+  const filteredUnknownItems = useMemo(() => {
+    const list = analysisStats.unknownItems || [];
+    if (!searchFilter.trim()) return list;
+    const q = searchFilter.trim().toLowerCase();
+    return list.filter((item) => {
+      const pPub = (item.pubNum || '').toLowerCase();
+      const pAss = (item.rawAssignee || '').toLowerCase();
+      const pTit = (item.title || '').toLowerCase();
+      const pApp = (item.appNum || '').toLowerCase();
+      return pPub.includes(q) || pAss.includes(q) || pTit.includes(q) || pApp.includes(q);
+    });
+  }, [analysisStats.unknownItems, searchFilter]);
+
+  // 單一專利國別輸入處理
+  const handleInputChange = useCallback((itemKey, val) => {
+    const clean = val.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+    setCountryCodeInputs((prev) => ({
+      ...prev,
+      [itemKey]: clean
+    }));
+  }, []);
+
+  // 快速為當前篩選結果中「未填寫」的項目套用指定國別
+  const handleApplyPresetToEmpty = useCallback((presetCode) => {
+    setCountryCodeInputs((prev) => {
+      const next = { ...prev };
+      filteredUnknownItems.forEach((item) => {
+        const key = item.itemKey || item.pubNum || item.appNum;
+        if (!next[key]) {
+          next[key] = presetCode;
+        }
+      });
+      return next;
+    });
+  }, [filteredUnknownItems]);
+
+  // 為當前篩選結果的「全部」項目強制套用指定國別
+  const handleApplyPresetToAllFiltered = useCallback((presetCode) => {
+    setCountryCodeInputs((prev) => {
+      const next = { ...prev };
+      filteredUnknownItems.forEach((item) => {
+        const key = item.itemKey || item.pubNum || item.appNum;
+        next[key] = presetCode;
+      });
+      return next;
+    });
+  }, [filteredUnknownItems]);
+
+  // 清除全部輸入
+  const handleClearInputs = useCallback(() => {
+    setCountryCodeInputs({});
+  }, []);
+
+  // 已有效填寫的案件數
+  const filledCount = useMemo(() => {
+    return Object.values(countryCodeInputs).filter((c) => /^[A-Z]{2}$/.test(c)).length;
+  }, [countryCodeInputs]);
+
+  // 儲存手動填寫之 2 碼國別代碼
+  const handleSaveUnknownCountries = useCallback(() => {
+    if (!onUpdatePatents) {
+      alert('系統提示：無法取得專利更新回調');
+      return;
+    }
+
+    const isAppMode = chartSubtype === 'application';
+
+    // 取得所有有效填寫的國別 (2 碼英文字母)
+    const validInputs = {};
+    Object.entries(countryCodeInputs).forEach(([key, val]) => {
+      const code = String(val).trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(code)) {
+        validInputs[key] = code;
+      }
+    });
+
+    if (Object.keys(validInputs).length === 0) {
+      alert('請至少為一筆專利填寫 2 碼國別代碼 (例如: TW, US, JP)');
+      return;
+    }
+
+    const { pubNum: pubNumKey, assignee: assigneeKey, appNum: appNumKey } = columnKeys;
+
+    // 建立 公開號/申請號/申請人 -> 國別代碼 映射
+    const pubNumToCode = new Map();
+    const appNumToCode = new Map();
+    const assigneeToCodeMap = new Map();
+
+    if (analysisStats.unknownItems) {
+      analysisStats.unknownItems.forEach((item) => {
+        const key = item.itemKey || item.pubNum || item.appNum;
+        const code = validInputs[key];
+        if (code) {
+          if (item.pubNum) pubNumToCode.set(item.pubNum.trim().toUpperCase(), code);
+          if (item.appNum) appNumToCode.set(item.appNum.trim().toUpperCase(), code);
+          if (syncSameAssignee && item.rawAssignee) {
+            assigneeToCodeMap.set(item.rawAssignee.trim(), code);
+          }
+        }
+      });
+    }
+
+    let modifiedCount = 0;
+    // 記錄此次修改內容（供匯出 Excel 時標記藍色字體）
+    const editRecords = [];
+
+    if (isAppMode) {
+      // ────────── 申請國分類更新 ──────────
+      // 更新目標欄位：優先使用現有欄位，若無則預設為 'Publication Country Code'
+      const targetCountryField = columnKeys.pubCountry || 'Publication Country Code';
+
+      const newPatents = rawPatents.map((p) => {
+        const pPubNum = pubNumKey && p[pubNumKey] !== undefined && p[pubNumKey] !== null
+          ? String(p[pubNumKey]).trim().toUpperCase()
+          : '';
+        const pAppNum = appNumKey && p[appNumKey] !== undefined && p[appNumKey] !== null
+          ? String(p[appNumKey]).trim().toUpperCase()
+          : '';
+        const pRawAssignee = assigneeKey && p[assigneeKey] !== undefined && p[assigneeKey] !== null
+          ? String(p[assigneeKey]).trim()
+          : '';
+
+        let targetCode = null;
+        if (pPubNum && pubNumToCode.has(pPubNum)) {
+          targetCode = pubNumToCode.get(pPubNum);
+        } else if (pAppNum && appNumToCode.has(pAppNum)) {
+          targetCode = appNumToCode.get(pAppNum);
+        } else if (syncSameAssignee && pRawAssignee && assigneeToCodeMap.has(pRawAssignee)) {
+          targetCode = assigneeToCodeMap.get(pRawAssignee);
+        }
+
+        if (targetCode) {
+          const currentVal = p[targetCountryField] !== undefined && p[targetCountryField] !== null
+            ? String(p[targetCountryField]).trim().toUpperCase()
+            : '';
+          if (currentVal !== targetCode) {
+            modifiedCount++;
+            // 記錄此次編輯（pubNum/appNum 供後端定位列，field_name 供後端定位欄）
+            editRecords.push({
+              pub_num: pPubNum || null,
+              app_num: pAppNum || null,
+              field_name: targetCountryField,
+              old_value: currentVal,
+              new_value: targetCode,
+              mode: 'application'
+            });
+            return {
+              ...p,
+              [targetCountryField]: targetCode
+            };
+          }
+        }
+        return p;
+      });
+
+      if (modifiedCount === 0) {
+        alert('所填寫的國別已存在或未產生變更');
+        return;
+      }
+
+      onUpdatePatents(newPatents, editRecords);
+      setSaveSuccessMsg(`成功為 ${modifiedCount} 件專利標註申請國！申請國分析圖已重新計算。`);
+    } else {
+      // ────────── 所屬國分類更新 ──────────
+      if (!assigneeKey) {
+        alert('無法定位專利清單中的申請人欄位');
+        return;
+      }
+
+      const newPatents = rawPatents.map((p) => {
+        const pPubNum = pubNumKey && p[pubNumKey] !== undefined && p[pubNumKey] !== null
+          ? String(p[pubNumKey]).trim().toUpperCase()
+          : '';
+        const pAppNum = appNumKey && p[appNumKey] !== undefined && p[appNumKey] !== null
+          ? String(p[appNumKey]).trim().toUpperCase()
+          : '';
+        const pRawAssignee = p[assigneeKey] !== undefined && p[assigneeKey] !== null
+          ? String(p[assigneeKey]).trim()
+          : '';
+
+        let targetCode = null;
+        if (pPubNum && pubNumToCode.has(pPubNum)) {
+          targetCode = pubNumToCode.get(pPubNum);
+        } else if (pAppNum && appNumToCode.has(pAppNum)) {
+          targetCode = appNumToCode.get(pAppNum);
+        } else if (syncSameAssignee && pRawAssignee && assigneeToCodeMap.has(pRawAssignee)) {
+          targetCode = assigneeToCodeMap.get(pRawAssignee);
+        }
+
+        if (targetCode) {
+          const updatedAssignee = appendCountryCodeToAssignee(pRawAssignee, targetCode);
+          if (updatedAssignee !== pRawAssignee) {
+            modifiedCount++;
+            // 記錄此次編輯
+            editRecords.push({
+              pub_num: pPubNum || null,
+              app_num: pAppNum || null,
+              field_name: assigneeKey,
+              old_value: pRawAssignee,
+              new_value: updatedAssignee,
+              mode: 'assignee'
+            });
+            return {
+              ...p,
+              [assigneeKey]: updatedAssignee
+            };
+          }
+        }
+        return p;
+      });
+
+      if (modifiedCount === 0) {
+        alert('所填寫的國別已存在或未產生變更');
+        return;
+      }
+
+      onUpdatePatents(newPatents, editRecords);
+      setSaveSuccessMsg(`成功為 ${modifiedCount} 案專利標註所屬國！所屬國分析圖已重新計算。`);
+    }
+
+    setTimeout(() => {
+      setSaveSuccessMsg('');
+      setIsUnknownModalOpen(false);
+      setCountryCodeInputs({});
+    }, 1200);
+  }, [countryCodeInputs, chartSubtype, syncSameAssignee, analysisStats.unknownItems, columnKeys, rawPatents, onUpdatePatents]);
 
   return (
     <div
@@ -998,6 +1323,11 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem', overflowY: 'auto' }}>
             {analysisStats.countryList.map((item, idx) => {
               const isSelected = selectedCountry === item.code;
+              // 以第一名的 percent 為基準做歸一化，使色階範圍充分展開
+              const maxPercent = analysisStats.countryList.length > 0
+                ? analysisStats.countryList[0].percent
+                : 100;
+              const barColor = getColorFromChoroplethScale(item.percent, maxPercent);
               return (
                 <div
                   key={item.code}
@@ -1029,12 +1359,12 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
                         {item.label}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0ea5e9' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: barColor }}>
                       {item.count} {analysisStats.unit} ({item.percent}%)
                     </div>
                   </div>
 
-                  {/* 佔比進度條 */}
+                  {/* 佔比進度條：使用 choropleth 色階顏色 */}
                   <div
                     style={{
                       height: '5px',
@@ -1047,7 +1377,7 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
                       style={{
                         height: '100%',
                         width: `${item.percent}%`,
-                        background: idx === 0 ? '#0ea5e9' : idx === 1 ? '#38bdf8' : idx === 2 ? '#0284c7' : '#94a3b8',
+                        background: barColor,
                         borderRadius: '3px',
                         transition: 'width 0.3s'
                       }}
@@ -1060,19 +1390,51 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
             {/* 未註明 / 其他 (Unknown) */}
             {analysisStats.unknownCount > 0 && (
               <div
+                onClick={() => {
+                  setIsUnknownModalOpen(true);
+                }}
+                title="點擊檢視未註明案件詳細清單，並手動填寫 2 碼國別代碼進行分類"
                 style={{
-                  padding: '0.5rem 0.65rem',
+                  padding: '0.6rem 0.75rem',
                   borderRadius: '0.45rem',
                   background: isDark ? 'rgba(30, 41, 59, 0.3)' : '#f8fafc',
-                  border: `1px dashed ${isDark ? 'rgba(255, 255, 255, 0.15)' : '#cbd5e1'}`,
+                  border: `1px dashed #0ea5e9`,
                   color: isDark ? '#94a3b8' : '#64748b',
                   fontSize: '0.8rem',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between'
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 1px 3px rgba(14, 165, 233, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDark ? 'rgba(14, 165, 233, 0.15)' : 'rgba(14, 165, 233, 0.08)';
+                  e.currentTarget.style.borderColor = '#0284c7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = isDark ? 'rgba(30, 41, 59, 0.3)' : '#f8fafc';
+                  e.currentTarget.style.borderColor = '#0ea5e9';
                 }}
               >
-                <span>未註明 / 無法識別</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <span>未註明 / 無法識別</span>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '0.4rem 0.55rem',
+                      borderRadius: '0.25rem',
+                      background: '#67caf8ff',
+                      color: '#fffbb7ff',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.2rem'
+                    }}
+                  >
+                    <Edit3 size={13} />
+                  </span>
+                </div>
                 <span style={{ fontWeight: 600 }}>
                   {analysisStats.unknownCount} {analysisStats.unit} ({((analysisStats.unknownCount / analysisStats.total) * 100).toFixed(1)}%)
                 </span>
@@ -1097,10 +1459,437 @@ const CountryAnalysisChart = ({ treeData, onCaptureReady, authState }) => {
         <Info size={13} />
         <span>
           {chartSubtype === 'application'
-            ? '申請國分析圖以「件」為單位統計 (依同申請號最新公開日合併，且同公開號僅計1件)，地圖標示件數，支援滾輪局部縮放與拖曳平移地圖。'
-            : '所屬國分析圖以「案」為單位統計 (依 INPADOC 家族代表案申請人地址判斷，且同公開號僅計1案)，地圖標示案數，支援滾輪局部縮放與拖曳平移地圖。'}
+            ? '申請國分析圖以「件」為單位統計，地圖標示件數; 系統未識別國家請點擊右側未註明虛框可手動分類標註。'
+            : '所屬國分析圖以「案」為單位統計，地圖標示案數; 系統未識別國家請點擊右側未註明虛框可手動分類標註。'}
         </span>
       </div>
+
+      {/* 未註明所屬國專利清單檢視與手動標註彈窗 */}
+      {isUnknownModalOpen && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.5rem'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsUnknownModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '960px',
+              maxHeight: '88vh',
+              background: isDark ? '#1e293b' : '#ffffff',
+              color: isDark ? '#f8fafc' : '#0f172a',
+              borderRadius: '0.75rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#e2e8f0'}`,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              fontFamily: 'Inter, system-ui, sans-serif'
+            }}
+          >
+            {/* Modal 頂部標題 */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: isDark ? 'rgba(15, 23, 42, 0.6)' : '#f8fafc'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '0.5rem',
+                    background: 'rgba(14, 165, 233, 0.15)',
+                    color: '#0ea5e9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Globe size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: isDark ? '#89b7f8ff' : '#64748b' }}>
+                    未註明{chartSubtype === 'application' ? '申請國' : '所屬國'}案件檢視與手動分類標註
+                  </h3>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: isDark ? '#a3badaff' : '#64748b' }}>
+                    共有 {analysisStats.unknownItems ? analysisStats.unknownItems.length : 0} {analysisStats.unit}無法自動識別{chartSubtype === 'application' ? '申請國' : '所屬國'}。您可填寫 2 碼代碼進行分類標註，下載 Excel 時將完整保留。
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsUnknownModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: isDark ? '#94a3b8' : '#64748b',
+                  cursor: 'pointer',
+                  padding: '0.4rem',
+                  borderRadius: '0.375rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* 工具列區塊 */}
+            <div
+              style={{
+                padding: '0.75rem 1.5rem',
+                borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'}`,
+                background: isDark ? 'rgba(15, 23, 42, 0.4)' : '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}
+            >
+              {/* 常用國別快速填入列 */}
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isDark ? '#cbd5e1' : '#475569' }}>
+                  常用國別一鍵填入：
+                </span>
+                {POPULAR_COUNTRIES.map((c) => (
+                  <button
+                    key={c.code}
+                    onClick={() => handleApplyPresetToEmpty(c.code)}
+                    title={`為目前尚未填寫的項目填入 ${c.name} (${c.code})`}
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.25rem 0.6rem',
+                      borderRadius: '0.375rem',
+                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : '#cbd5e1'}`,
+                      background: isDark ? 'rgba(30, 41, 59, 0.8)' : '#f1f5f9',
+                      color: isDark ? '#f1f5f9' : '#1e293b',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#0ea5e9'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = isDark ? 'rgba(255, 255, 255, 0.15)' : '#cbd5e1'; }}
+                  >
+                    <span>{c.flag}</span>
+                    <span>{c.name}</span>
+                    <span style={{ fontWeight: 700, color: '#0ea5e9' }}>{c.code}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* 搜尋與設定選項 */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                {/* 搜尋過濾輸入框 */}
+                <div style={{ position: 'relative', width: '280px' }}>
+                  <Search
+                    size={15}
+                    style={{
+                      position: 'absolute',
+                      left: '0.65rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: isDark ? '#64748b' : '#94a3b8'
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    placeholder="搜尋公開號、申請人、標題..."
+                    style={{
+                      width: '100%',
+                      padding: '0.4rem 0.65rem 0.4rem 2.1rem',
+                      fontSize: '0.82rem',
+                      borderRadius: '0.375rem',
+                      border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : '#cbd5e1'}`,
+                      background: isDark ? '#0f172a' : '#ffffff',
+                      color: isDark ? '#f8fafc' : '#0f172a',
+                      outline: 'none'
+                    }}
+                  />
+                  {searchFilter && (
+                    <button
+                      onClick={() => setSearchFilter('')}
+                      style={{
+                        position: 'absolute',
+                        right: '0.5rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: isDark ? '#64748b' : '#94a3b8',
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* 同步套用核取方塊 */}
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    color: isDark ? '#cbd5e1' : '#334155'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={syncSameAssignee}
+                    onChange={(e) => setSyncSameAssignee(e.target.checked)}
+                    style={{ cursor: 'pointer', accentColor: '#0ea5e9' }}
+                  />
+                  <span>同步套用至相同申請人之所有案件（推薦，保持全清單資料一致）</span>
+                </label>
+              </div>
+            </div>
+
+            {/* 案件清單表格 */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                minHeight: '280px',
+                maxHeight: '480px'
+              }}
+            >
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead
+                  style={{
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 2,
+                    background: isDark ? '#1e293b' : '#f8fafc',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
+                >
+                  <tr style={{ borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '0.6rem 0.75rem', width: '45px', textAlign: 'center', color: isDark ? '#94a3b8' : '#64748b' }}>#</th>
+                    <th style={{ padding: '0.6rem 0.75rem', width: '170px', color: isDark ? '#94a3b8' : '#64748b' }}>公開公告號</th>
+                    <th style={{ padding: '0.6rem 0.75rem', width: '220px', color: isDark ? '#94a3b8' : '#64748b' }}>申請人 / 專利權人</th>
+                    <th style={{ padding: '0.6rem 0.75rem', color: isDark ? '#94a3b8' : '#64748b' }}>專利名稱</th>
+                    <th style={{ padding: '0.6rem 0.75rem', width: '100px', textAlign: 'center', color: isDark ? '#94a3b8' : '#64748b' }}>國別 (2碼)</th>
+                    <th style={{ padding: '0.6rem 0.75rem', width: '140px', color: isDark ? '#94a3b8' : '#64748b' }}>即時識別結果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUnknownItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: isDark ? '#64748b' : '#94a3b8' }}>
+                        {searchFilter ? '查無符合搜尋條件的案件' : `目前無未註明或無法識別${chartSubtype === 'application' ? '申請國' : '所屬國'}的案件`}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUnknownItems.map((item, index) => {
+                      const itemKey = item.itemKey || item.pubNum || item.appNum || `idx_${index}`;
+                      const inputCode = countryCodeInputs[itemKey] || '';
+                      const meta = inputCode && inputCode.length === 2 ? getCountryMeta(inputCode) : null;
+                      return (
+                        <tr
+                          key={itemKey}
+                          style={{
+                            borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9'}`,
+                            background: index % 2 === 0 ? 'transparent' : (isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.015)')
+                          }}
+                        >
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: isDark ? '#64748b' : '#94a3b8' }}>
+                            {index + 1}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', fontFamily: 'monospace', fontWeight: 600, color: '#0ea5e9' }}>
+                            {item.pubNum || (item.appNum ? `申請號: ${item.appNum}` : '-')}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: isDark ? '#e2e8f0' : '#1e293b', wordBreak: 'break-word' }}>
+                            {item.rawAssignee || <span style={{ color: '#ef4444', fontStyle: 'italic' }}>空白未註明</span>}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: isDark ? '#94a3b8' : '#64748b', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
+                            {item.title || '-'}
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>
+                            <input
+                              type="text"
+                              maxLength={2}
+                              value={inputCode}
+                              onChange={(e) => handleInputChange(itemKey, e.target.value)}
+                              placeholder="例: TW"
+                              style={{
+                                width: '65px',
+                                padding: '0.3rem 0.4rem',
+                                textAlign: 'center',
+                                fontWeight: 700,
+                                fontSize: '0.85rem',
+                                borderRadius: '0.375rem',
+                                border: `1.5px solid ${inputCode.length === 2 ? '#10b981' : (isDark ? '#f7f5c1ff' : '#f5d0a3ff')}`,
+                                background: isDark ? '#0f172a' : '#ffffff',
+                                color: isDark ? '#f8fafc' : '#477bf5ff',
+                                textTransform: 'uppercase',
+                                outline: 'none'
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem' }}>
+                            {meta ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  padding: '0.2rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  background: 'rgba(16, 185, 129, 0.15)',
+                                  color: '#10b981',
+                                  fontWeight: 600,
+                                  fontSize: '0.78rem'
+                                }}
+                              >
+                                <Check size={12} />
+                                {meta.name} ({meta.code})
+                              </span>
+                            ) : inputCode && inputCode.length === 2 ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '0.2rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  background: 'rgba(245, 158, 11, 0.15)',
+                                  color: '#f59e0b',
+                                  fontWeight: 600,
+                                  fontSize: '0.78rem'
+                                }}
+                              >
+                                自訂代碼 ({inputCode})
+                              </span>
+                            ) : (
+                              <span style={{ color: isDark ? '#64748b' : '#94a3b8', fontSize: '0.78rem' }}>
+                                未設定
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 成功儲存 Toast 提示 */}
+            {saveSuccessMsg && (
+              <div
+                style={{
+                  padding: '0.6rem 1.5rem',
+                  background: 'rgba(16, 185, 129, 0.95)',
+                  color: 'white',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  animation: 'fadeIn 0.2s'
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>{saveSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Modal 底部操作列 */}
+            <div
+              style={{
+                padding: '0.85rem 1.5rem',
+                borderTop: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'}`,
+                background: isDark ? 'rgba(15, 23, 42, 0.6)' : '#f8fafc',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <div style={{ fontSize: '0.82rem', color: isDark ? '#94a3b8' : '#64748b', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span>已填寫標註: <strong style={{ color: '#0ea5e9' }}>{filledCount}</strong> {analysisStats.unit} / 總共 {analysisStats.unknownItems ? analysisStats.unknownItems.length : 0} {analysisStats.unit}</span>
+                {filledCount > 0 && (
+                  <button
+                    onClick={handleClearInputs}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: isDark ? '#94a3b8' : '#64748b',
+                      textDecoration: 'underline',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    全部清除
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <button
+                  onClick={() => setIsUnknownModalOpen(false)}
+                  style={{
+                    padding: '0.45rem 1rem',
+                    borderRadius: '0.375rem',
+                    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : '#cbd5e1'}`,
+                    background: isDark ? 'rgba(30, 41, 59, 0.6)' : '#ffffff',
+                    color: isDark ? '#f8fafc' : '#475569',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveUnknownCountries}
+                  disabled={filledCount === 0}
+                  style={{
+                    padding: '0.45rem 1.25rem',
+                    borderRadius: '0.375rem',
+                    border: 'none',
+                    background: filledCount > 0 ? 'linear-gradient(135deg, #0ea5e9, #0284c7)' : (isDark ? '#334155' : '#cbd5e1'),
+                    color: 'white',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: filledCount > 0 ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    boxShadow: filledCount > 0 ? '0 4px 12px rgba(14, 165, 233, 0.3)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Check size={16} />
+                  <span>儲存並套用{chartSubtype === 'application' ? '申請國' : '所屬國'}分類</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

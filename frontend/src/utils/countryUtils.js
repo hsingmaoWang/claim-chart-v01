@@ -162,3 +162,27 @@ export const extractApplicationCountry = (patent, pubCountryKey, pubNumKey) => {
   return null;
 };
 
+/**
+ * 將手動填寫的 2 碼國別代碼追加至原始 Assignee 字串末端
+ * 例: "工研院" + "TW" -> "工研院,TW"
+ * 例: "TSMC, Hsinchu" + "TW" -> "TSMC, Hsinchu,TW"
+ */
+export const appendCountryCodeToAssignee = (rawAssignee, countryCode) => {
+  if (!countryCode) return rawAssignee || '';
+  const code = String(countryCode).trim().toUpperCase();
+  if (!code) return rawAssignee || '';
+
+  const orig = rawAssignee !== undefined && rawAssignee !== null ? String(rawAssignee).trim() : '';
+  if (!orig || ['nan', 'none', '-', 'null'].includes(orig.toLowerCase())) {
+    return code;
+  }
+
+  // 避免重複追加相同的國別代碼
+  if (orig.endsWith(`,${code}`) || orig.endsWith(`, ${code}`)) {
+    return orig;
+  }
+
+  return `${orig},${code}`;
+};
+
+

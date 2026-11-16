@@ -10,6 +10,8 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Form, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import tempfile
+from openpyxl import load_workbook
+from openpyxl.styles import Font
 
 # --- Path Fix ---
 import sys
@@ -34,7 +36,8 @@ from fastapi import BackgroundTasks
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# 全域任務註冊表
+# 全域暫存與任務註冊表
+temp_storage = {}
 task_registry = {}
 
 class MindMapConfig(BaseModel):
@@ -955,12 +958,17 @@ AI技術簡述: {brief}
             df_criteria.to_excel(writer, sheet_name="初篩定義", index=False)
 
         old_session_id = temp_storage.get(file_id, {}).get("x_session_id", "")
+        modified_pubs = temp_storage.get(file_id, {}).get("modified_publication_numbers", [])
+        if modified_pubs:
+            reapply_blue_fonts_to_excel(out_path, modified_pubs, target_sheet_name="Sheet1")
+
         temp_storage[file_id] = {
             "df_preprocessed": df,
             "file_path_preprocessed": out_path,
             "filename": filename,
             "selected_columns": selected_columns or [],
-            "x_session_id": old_session_id
+            "x_session_id": old_session_id,
+            "modified_publication_numbers": modified_pubs
         }
 
         hit_rate = (y_count / total_count) * 100 if total_count > 0 else 0.0
@@ -1208,6 +1216,315 @@ def classify_excel_columns(df):
     }
 
 
+def check_dual_publication_columns(file_path: str) -> dict:
+    """
+    檢查上傳的 Excel 檔案是否同時包含「專利公開公告號」及「Publication Number」欄位。
+    規則 1: 檢查是否同時包含兩欄位
+    規則 2: 逐列檢查此兩欄位的資料是否完全一樣
+    規則 3: 若兩欄位其中一個空白，將有資料的內容填到空白儲存格 (自動互補)
+    規則 4: 若兩欄位資料不完全相同，收集為衝突清單供使用者手動檢視/修改
+    規則 5: 若有單邊補齊且無兩欄衝突，立即使用 openpyxl 寫入 Excel 並以藍色字 (Font color: 0000FF) 標記
+    """
+    try:
+        wb = load_workbook(file_path)
+        ws = wb.active
+        if ws is None:
+            return {"has_dual_columns": False}
+
+        col_tw_idx = None
+        col_en_idx = None
+        col_title_idx = None
+        col_applicant_idx = None
+        col_appnum_idx = None
+
+        col_tw_name = ""
+        col_en_name = ""
+
+        for col_idx in range(1, ws.max_column + 1):
+            val = ws.cell(row=1, column=col_idx).value
+            if val is None:
+                continue
+            val_clean = str(val).strip()
+            val_lower = val_clean.lower()
+
+            if val_clean == "專利公開公告號":
+                col_tw_idx = col_idx
+                col_tw_name = val_clean
+            elif val_lower == "publication number":
+                col_en_idx = col_idx
+                col_en_name = val_clean
+
+            # 輔助識別欄位
+            if col_title_idx is None and any(k in val_lower for k in ["title", "專利名稱", "名稱", "案名"]):
+                col_title_idx = col_idx
+            if col_applicant_idx is None and any(k in val_lower for k in ["applicant", "assignee", "申請人", "專利權人"]):
+                col_applicant_idx = col_idx
+            if col_appnum_idx is None and any(k in val_lower for k in ["application number", "申請號", "app no", "app_no"]):
+                col_appnum_idx = col_idx
+
+        # 規則 1: 是否同時包含兩欄位
+        if col_tw_idx is None or col_en_idx is None:
+            return {"has_dual_columns": False}
+
+        def is_empty(v):
+            if v is None:
+                return True
+            s = str(v).strip()
+            return s == "" or s.lower() in ("nan", "none", "nat", "null", "-")
+
+        auto_filled_items = []
+        conflicts = []
+
+        # 規則 2: 逐列比對每筆專利資料
+        for row in range(2, ws.max_row + 1):
+            cell_tw = ws.cell(row=row, column=col_tw_idx)
+            cell_en = ws.cell(row=row, column=col_en_idx)
+
+            empty_tw = is_empty(cell_tw.value)
+            empty_en = is_empty(cell_en.value)
+
+            val_tw_str = "" if empty_tw else str(cell_tw.value).strip()
+            val_en_str = "" if empty_en else str(cell_en.value).strip()
+
+            title_val = str(ws.cell(row=row, column=col_title_idx).value or '').strip() if col_title_idx else ""
+            applicant_val = str(ws.cell(row=row, column=col_applicant_idx).value or '').strip() if col_applicant_idx else ""
+            app_num_val = str(ws.cell(row=row, column=col_appnum_idx).value or '').strip() if col_appnum_idx else ""
+
+            # 規則 3: 其中一欄空白，另一欄有值 -> 自動互補
+            if empty_tw and not empty_en:
+                auto_filled_items.append({
+                    "row": row,
+                    "target_col": col_tw_idx,
+                    "target_col_name": col_tw_name,
+                    "val": val_en_str
+                })
+            elif empty_en and not empty_tw:
+                auto_filled_items.append({
+                    "row": row,
+                    "target_col": col_en_idx,
+                    "target_col_name": col_en_name,
+                    "val": val_tw_str
+                })
+            # 規則 4: 兩欄皆有值但不完全相同 -> 收集為衝突列供使用者手動修改
+            elif not empty_tw and not empty_en and val_tw_str != val_en_str:
+                conflicts.append({
+                    "row": row,
+                    "val_tw": val_tw_str,
+                    "val_en": val_en_str,
+                    "tw_value": val_tw_str,
+                    "en_value": val_en_str,
+                    "title": title_val,
+                    "applicant": applicant_val,
+                    "app_num": app_num_val,
+                    "col_tw_name": col_tw_name,
+                    "col_en_name": col_en_name
+                })
+
+        # 規則 5: 若有單邊補齊且「無」兩欄衝突，立即使用 openpyxl 寫入並以藍色字標記
+        if len(auto_filled_items) > 0 and len(conflicts) == 0:
+            for item in auto_filled_items:
+                c = ws.cell(row=item["row"], column=item["target_col"])
+                c.value = item["val"]
+                orig_f = c.font
+                c.font = Font(
+                    color="0000FF",
+                    name=orig_f.name if orig_f else None,
+                    size=orig_f.size if orig_f else None,
+                    bold=orig_f.bold if orig_f else None
+                )
+            wb.save(file_path)
+
+        return {
+            "has_dual_columns": True,
+            "col_tw_idx": col_tw_idx,
+            "col_en_idx": col_en_idx,
+            "col_tw_name": col_tw_name,
+            "col_en_name": col_en_name,
+            "auto_filled_items": auto_filled_items,
+            "auto_filled_count": len(auto_filled_items),
+            "conflicts": conflicts
+        }
+    except Exception as e:
+        logger.error(f"Error checking dual publication columns: {e}")
+        return {"has_dual_columns": False, "error": str(e)}
+
+
+def apply_publication_resolutions(file_path: str, resolutions: List[dict], auto_filled_items: List[dict] = None) -> List[str]:
+    """
+    使用 openpyxl 將手動修改 (規則 4) 與自動補齊 (規則 3) 的資料寫入 Excel 檔案中，
+    並將該些儲存格以藍色字 (Font color: 0000FF) 標記 (規則 5)。
+    回傳被修改的專利公開號清單。
+    """
+    wb = load_workbook(file_path)
+    ws = wb.active
+    if ws is None:
+        return []
+
+    col_tw_idx = None
+    col_en_idx = None
+    for col_idx in range(1, ws.max_column + 1):
+        val = ws.cell(row=1, column=col_idx).value
+        if val is None:
+            continue
+        val_clean = str(val).strip()
+        if val_clean == "專利公開公告號":
+            col_tw_idx = col_idx
+        elif val_clean.lower() == "publication number":
+            col_en_idx = col_idx
+
+    if col_tw_idx is None or col_en_idx is None:
+        return []
+
+    modified_pubs = set()
+
+    # 1. 寫入規則 3 的單邊補齊
+    if auto_filled_items:
+        for item in auto_filled_items:
+            r = item.get("row")
+            c_idx = item.get("target_col")
+            val = item.get("val")
+            if r and c_idx and val is not None:
+                c = ws.cell(row=r, column=c_idx)
+                c.value = val
+                orig_f = c.font
+                c.font = Font(
+                    color="0000FF",
+                    name=orig_f.name if orig_f else None,
+                    size=orig_f.size if orig_f else None,
+                    bold=orig_f.bold if orig_f else None
+                )
+                modified_pubs.add(str(val).strip())
+
+    # 2. 寫入規則 4 的使用者手動修改
+    for res in resolutions:
+        row = res.get("row")
+        final_val = str(res.get("final_value", "")).strip()
+        if not row or not final_val:
+            continue
+
+        cell_tw = ws.cell(row=row, column=col_tw_idx)
+        cell_en = ws.cell(row=row, column=col_en_idx)
+
+        cell_tw.value = final_val
+        cell_en.value = final_val
+
+        orig_tw_f = cell_tw.font
+        cell_tw.font = Font(
+            color="0000FF",
+            name=orig_tw_f.name if orig_tw_f else None,
+            size=orig_tw_f.size if orig_tw_f else None,
+            bold=orig_tw_f.bold if orig_tw_f else None
+        )
+
+        orig_en_f = cell_en.font
+        cell_en.font = Font(
+            color="0000FF",
+            name=orig_en_f.name if orig_en_f else None,
+            size=orig_en_f.size if orig_en_f else None,
+            bold=orig_en_f.bold if orig_en_f else None
+        )
+        modified_pubs.add(final_val)
+
+    wb.save(file_path)
+    return list(modified_pubs)
+
+
+def reapply_blue_fonts_to_excel(file_path: str, modified_pubs: List[str], target_sheet_name: str = None):
+    """
+    若 Excel 被 DataFrame 覆寫，重新以 openpyxl 將被修改過之「專利公開公告號」與「Publication Number」儲存格標記為藍色字。
+    """
+    if not modified_pubs:
+        return
+    try:
+        wb = load_workbook(file_path)
+        if target_sheet_name and target_sheet_name in wb.sheetnames:
+            ws = wb[target_sheet_name]
+        else:
+            ws = wb.active
+        if not ws:
+            return
+        col_indices = []
+        for col_idx in range(1, ws.max_column + 1):
+            val = ws.cell(row=1, column=col_idx).value
+            if val and (str(val).strip() == "專利公開公告號" or str(val).strip().lower() == "publication number"):
+                col_indices.append(col_idx)
+
+        if not col_indices:
+            return
+
+        mod_set = {str(p).strip().upper() for p in modified_pubs if p}
+        for row in range(2, ws.max_row + 1):
+            for col_idx in col_indices:
+                cell = ws.cell(row=row, column=col_idx)
+                if cell.value and str(cell.value).strip().upper() in mod_set:
+                    orig_f = cell.font
+                    cell.font = Font(
+                        color="0000FF",
+                        name=orig_f.name if orig_f else None,
+                        size=orig_f.size if orig_f else None,
+                        bold=orig_f.bold if orig_f else None
+                    )
+        wb.save(file_path)
+    except Exception as e:
+        logger.warning(f"Failed to reapply blue fonts: {e}")
+
+
+class ConflictResolutionItem(BaseModel):
+    row: int
+    final_value: str
+
+
+class ResolveConflictsPayload(BaseModel):
+    file_id: str
+    resolutions: List[ConflictResolutionItem]
+
+
+@router.post("/api/mindmap/resolve_publication_conflicts")
+async def resolve_publication_conflicts(payload: ResolveConflictsPayload):
+    """
+    接收使用者手動修改之專利公開公告號最終值，
+    使用 openpyxl 將資料寫入 Excel 檔案中並以藍色字 (Font color: 0000FF) 標記，
+    隨後繼續執行原欄位劃分與預處理流程。
+    """
+    file_id = payload.file_id
+    if file_id not in temp_storage:
+        raise HTTPException(status_code=404, detail="找不到上傳的暫存檔案，請重新上傳")
+
+    stored = temp_storage[file_id]
+    file_path = stored["file_path"]
+    filename = stored.get("filename", "")
+    auto_filled_items = stored.get("auto_filled_items", [])
+
+    resolutions_dicts = [{"row": item.row, "final_value": item.final_value} for item in payload.resolutions]
+    modified_pubs = apply_publication_resolutions(file_path, resolutions_dicts, auto_filled_items)
+
+    df = extract_patents_from_excel(file_path)
+    if df.empty:
+        raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
+
+    df_processed, patent_processing_info = patent_processor.process_patent_dataframe_with_skill(df)
+    if patent_processing_info.get("pub_merge_performed") and patent_processing_info.get("dedup_count", 0) > 0:
+        df_processed.to_excel(file_path, index=False)
+        reapply_blue_fonts_to_excel(file_path, modified_pubs)
+
+    column_info = classify_excel_columns(df_processed)
+    column_info["file_id"] = file_id
+    column_info["filename"] = filename
+    column_info["patent_processing"] = patent_processing_info
+    column_info["modified_publication_numbers"] = modified_pubs
+
+    temp_storage[file_id] = {
+        "file_path": file_path,
+        "filename": filename,
+        "df_raw": df,
+        "df_processed": df_processed,
+        "patent_processing": patent_processing_info,
+        "modified_publication_numbers": modified_pubs
+    }
+
+    return patent_processor.to_native_types(column_info)
+
+
 @router.post("/api/mindmap/preview_columns")
 async def preview_excel_columns(file: UploadFile = File(...)):
     """
@@ -1221,6 +1538,27 @@ async def preview_excel_columns(file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
 
+        # ──【最優先步驟】檢查「專利公開公告號」與「Publication Number」雙欄位 ──
+        dual_check = check_dual_publication_columns(file_path)
+        if dual_check.get("has_dual_columns"):
+            conflicts = dual_check.get("conflicts", [])
+            auto_filled_items = dual_check.get("auto_filled_items", [])
+
+            # 若有規則 4 衝突（兩欄資料不完全相同），暫停後續步驟，回傳供前端產生檢視/修改畫面
+            if len(conflicts) > 0:
+                temp_storage[file_id] = {
+                    "file_path": file_path,
+                    "filename": file.filename,
+                    "auto_filled_items": auto_filled_items
+                }
+                return {
+                    "has_publication_conflicts": True,
+                    "conflicts": conflicts,
+                    "auto_filled_count": len(auto_filled_items),
+                    "file_id": file_id,
+                    "filename": file.filename
+                }
+
         df = extract_patents_from_excel(file_path)
         if df.empty:
             raise HTTPException(status_code=400, detail="上傳檔案無相關資料，請重新上傳檔案")
@@ -1231,21 +1569,28 @@ async def preview_excel_columns(file: UploadFile = File(...)):
         # 若進行了公開公告合併且有去重，將合併後之 DataFrame 回寫覆蓋暫存檔案，確保後續預處理與分析基於合併後之資料集
         if patent_processing_info.get("pub_merge_performed") and patent_processing_info.get("dedup_count", 0) > 0:
             df_processed.to_excel(file_path, index=False)
+            if dual_check.get("has_dual_columns"):
+                mod_pubs = [item["val"] for item in dual_check.get("auto_filled_items", [])]
+                reapply_blue_fonts_to_excel(file_path, mod_pubs)
 
         column_info = classify_excel_columns(df_processed)
         column_info["file_id"] = file_id
         column_info["filename"] = file.filename
         column_info["patent_processing"] = patent_processing_info
-        
+        if dual_check.get("has_dual_columns") and dual_check.get("auto_filled_count", 0) > 0:
+            column_info["auto_filled_count"] = dual_check["auto_filled_count"]
+            column_info["modified_publication_numbers"] = [item["val"] for item in dual_check.get("auto_filled_items", [])]
+
         # 暫存已上傳檔案路徑，後續 preprocess 可重用
         temp_storage[file_id] = {
             "file_path": file_path,
             "filename": file.filename,
             "df_raw": df,
             "df_processed": df_processed,
-            "patent_processing": patent_processing_info
+            "patent_processing": patent_processing_info,
+            "modified_publication_numbers": [item["val"] for item in dual_check.get("auto_filled_items", [])] if dual_check.get("has_dual_columns") else []
         }
-        
+
         return patent_processor.to_native_types(column_info)
     except HTTPException as he:
         raise he
@@ -1503,7 +1848,6 @@ async def ai_assist_criteria(req: AIAssistCriteriaRequest):
         logger.error(f"AI assist criteria failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-temp_storage = {}
 
 @router.post("/api/mindmap/upload")
 async def upload_for_mindmap(
@@ -2419,6 +2763,114 @@ async def export_mindmap_excel(data: dict, x_session_id: str = Header(default=""
 
             # 凍結首列
             ws_ipc.freeze_panes = "A2"
+
+        # 若有被修改/互補之公開號，在「專利映射結果」工作表重新套用藍色字體 (Font color: 0000FF)
+        mod_pubs = data.get("modified_publication_numbers", [])
+        if not mod_pubs and data.get("file_id"):
+            mod_pubs = temp_storage.get(data.get("file_id"), {}).get("modified_publication_numbers", [])
+        if mod_pubs and "專利映射結果" in wb.sheetnames:
+            ws_map = wb["專利映射結果"]
+            col_indices = []
+            for col_idx in range(1, ws_map.max_column + 1):
+                val = ws_map.cell(row=1, column=col_idx).value
+                if val and (str(val).strip() == "專利公開公告號" or str(val).strip().lower() == "publication number"):
+                    col_indices.append(col_idx)
+            mod_set = {str(p).strip().upper() for p in mod_pubs if p}
+            for row in range(2, ws_map.max_row + 1):
+                for col_idx in col_indices:
+                    cell = ws_map.cell(row=row, column=col_idx)
+                    if cell.value and str(cell.value).strip().upper() in mod_set:
+                        orig_f = cell.font
+                        cell.font = Font(
+                            color="0000FF",
+                            name=orig_f.name if orig_f else None,
+                            size=orig_f.size if orig_f else None,
+                            bold=orig_f.bold if orig_f else None
+                        )
+
+        # ── 國別手動標註修改記錄：在對應欄位儲存格套用藍色字體 ──
+        country_edit_records = data.get("country_edit_records", [])
+        if country_edit_records and "專利映射結果" in wb.sheetnames:
+            ws_map = wb["專利映射結果"]
+
+            # 建立欄名 -> 欄索引 映射表（大小寫不敏感）
+            header_to_col = {}
+            for col_idx in range(1, ws_map.max_column + 1):
+                hdr = ws_map.cell(row=1, column=col_idx).value
+                if hdr is not None:
+                    header_to_col[str(hdr).strip().lower()] = col_idx
+                    header_to_col[str(hdr).strip()] = col_idx  # 原始大小寫也保留
+
+            # 建立公開號/申請號 -> 行索引 快速定位表
+            # 嘗試找公開號欄與申請號欄
+            pub_num_col = None
+            app_num_col = None
+            for hdr, cidx in header_to_col.items():
+                hdr_l = hdr.lower()
+                if pub_num_col is None and hdr_l in ("publication number", "pub_no", "pub no", "專利公開公告號", "公開號", "公告號"):
+                    pub_num_col = cidx
+                if app_num_col is None and hdr_l in ("application number", "app_no", "app no", "申請號"):
+                    app_num_col = cidx
+
+            # 建立 (pub_num_upper, app_num_upper) -> [row_idx] 映射
+            pub_to_rows = {}
+            app_to_rows = {}
+            for row_idx in range(2, ws_map.max_row + 1):
+                if pub_num_col:
+                    pv = ws_map.cell(row=row_idx, column=pub_num_col).value
+                    if pv:
+                        key = str(pv).strip().upper()
+                        pub_to_rows.setdefault(key, []).append(row_idx)
+                if app_num_col:
+                    av = ws_map.cell(row=row_idx, column=app_num_col).value
+                    if av:
+                        key = str(av).strip().upper()
+                        app_to_rows.setdefault(key, []).append(row_idx)
+
+            blue_font_cache = {}  # orig_font_key -> new Font (避免重複建立物件)
+
+            def apply_blue(cell):
+                orig_f = cell.font
+                f_key = (
+                    orig_f.name if orig_f else None,
+                    orig_f.size if orig_f else None,
+                    bool(orig_f.bold) if orig_f else False
+                )
+                if f_key not in blue_font_cache:
+                    blue_font_cache[f_key] = Font(
+                        color="0000FF",
+                        name=f_key[0],
+                        size=f_key[1],
+                        bold=f_key[2]
+                    )
+                cell.font = blue_font_cache[f_key]
+
+            for rec in country_edit_records:
+                field_name = rec.get("field_name", "")
+                new_value = rec.get("new_value", "")
+                pub_num = str(rec.get("pub_num") or "").strip().upper()
+                app_num = str(rec.get("app_num") or "").strip().upper()
+
+                if not field_name or not new_value:
+                    continue
+
+                # 找目標欄索引（field_name 可能是中文或英文欄名）
+                target_col = header_to_col.get(field_name) or header_to_col.get(field_name.lower())
+                if not target_col:
+                    continue
+
+                # 收集命中的行索引
+                matched_rows = set()
+                if pub_num:
+                    matched_rows.update(pub_to_rows.get(pub_num, []))
+                if app_num:
+                    matched_rows.update(app_to_rows.get(app_num, []))
+
+                for row_idx in matched_rows:
+                    cell = ws_map.cell(row=row_idx, column=target_col)
+                    # 再次確認值相符後才標記（避免誤標）
+                    if cell.value is not None and str(cell.value).strip() == str(new_value).strip():
+                        apply_blue(cell)
 
         wb.save(out_path)
     except Exception as e:

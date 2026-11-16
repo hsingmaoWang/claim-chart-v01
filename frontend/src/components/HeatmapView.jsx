@@ -327,14 +327,18 @@ const SortableXChip = ({ dim, theme }) => {
         fontSize: '0.85rem',
         color: isDark ? '#7dd3fc' : '#0284c7',
         fontWeight: '600',
-        backdropFilter: 'blur(4px)'
+        backdropFilter: 'blur(4px)',
+        wordBreak: 'break-word',
+        lineHeight: '1.25',
+        width: '100%',
+        boxSizing: 'border-box'
       }}
       {...attributes}
       {...listeners}
     >
-      <GripVertical size={13} style={{ opacity: 0.6 }} />
-      <span>{dim.emoji}</span>
-      <span>{dim.label}</span>
+      <GripVertical size={13} style={{ opacity: 0.6, flexShrink: 0 }} />
+      <span style={{ flexShrink: 0 }}>{dim.emoji}</span>
+      <span style={{ wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{dim.label}</span>
     </div>
   );
 };
@@ -346,6 +350,7 @@ const DraggableChip = ({ dim, zone, color = 'cyan', theme }) => {
   });
 
   const isDark = theme === 'dark';
+  const isYAxis = zone === 'yAxis';
   const colors = {
     cyan: {
       bg: isDark ? 'rgba(14,165,233,0.15)' : 'rgba(14,165,233,0.08)',
@@ -370,10 +375,10 @@ const DraggableChip = ({ dim, zone, color = 'cyan', theme }) => {
       ref={setNodeRef}
       style={{
         opacity: isDragging ? 0.3 : 1,
-        display: 'inline-flex',
+        display: isYAxis ? 'flex' : 'inline-flex',
         alignItems: 'center',
-        gap: '0.35rem',
-        padding: '0.4rem 0.7rem',
+        gap: '0.4rem',
+        padding: isYAxis ? '0.45rem 0.75rem' : '0.4rem 0.7rem',
         background: c.bg,
         border: `1px solid ${c.border}`,
         borderRadius: '0.5rem',
@@ -383,14 +388,18 @@ const DraggableChip = ({ dim, zone, color = 'cyan', theme }) => {
         color: c.text,
         fontWeight: '600',
         backdropFilter: 'blur(4px)',
-        whiteSpace: 'nowrap'
+        whiteSpace: isYAxis ? 'normal' : 'normal',
+        wordBreak: 'break-word',
+        lineHeight: '1.25',
+        width: isYAxis ? '100%' : 'auto',
+        boxSizing: 'border-box'
       }}
       {...attributes}
       {...listeners}
     >
-      <GripVertical size={13} style={{ opacity: 0.6 }} />
-      <span>{dim.emoji}</span>
-      <span>{dim.label}</span>
+      <GripVertical size={13} style={{ opacity: 0.6, flexShrink: 0 }} />
+      <span style={{ flexShrink: 0 }}>{dim.emoji}</span>
+      <span style={{ wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{dim.label}</span>
     </div>
   );
 };
@@ -420,7 +429,7 @@ const DroppableZone = ({ id, children, label, hint, isEmpty, accent = 'cyan', th
         gap: '0.5rem'
       }}
     >
-      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: a.label, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.1rem' }}>
+      <div style={{ fontSize: '0.78rem', fontWeight: '700', color: a.label, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.1rem' }}>
         {label}
       </div>
       {isEmpty && (
@@ -1272,8 +1281,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                 const dim = getDim(id);
                 if (!dim) return null;
                 return (
-                  <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <div style={{ flex: 1 }}>
+                  <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <SortableXChip dim={dim} theme={theme} />
                     </div>
                     <button
@@ -1288,7 +1297,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                         display: 'flex',
                         alignItems: 'center',
                         borderRadius: '50%',
-                        transition: 'color 0.2s'
+                        transition: 'color 0.2s',
+                        flexShrink: 0
                       }}
                       onMouseOver={e => e.currentTarget.style.color = '#ef4444'}
                       onMouseOut={e => e.currentTarget.style.color = theme === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)'}
@@ -1314,8 +1324,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
               const dim = getDim(id);
               if (!dim) return null;
               return (
-                <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <div style={{ flex: 1 }}>
+                <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <DraggableChip dim={dim} zone="yAxis" color="purple" theme={theme} />
                   </div>
                   <button
@@ -1330,7 +1340,8 @@ const HeatmapView = ({ treeData, onCaptureReady, authState }) => {
                       display: 'flex',
                       alignItems: 'center',
                       borderRadius: '50%',
-                      transition: 'color 0.2s'
+                      transition: 'color 0.2s',
+                      flexShrink: 0
                     }}
                     onMouseOver={e => e.currentTarget.style.color = '#ef4444'}
                     onMouseOut={e => e.currentTarget.style.color = theme === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)'}

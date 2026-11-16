@@ -1446,7 +1446,7 @@ const IpcCirclePackingChart = ({ treeData, onCaptureReady, authState, onIpcStats
             {/* 操作提示小語 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', opacity: 0.9 }}>
               <Info size={14} />
-              <span>滾輪縮放畫布；點擊圓圈聚焦；點擊空白回到上階；Top 5 標籤可按住滑鼠拖曳調整位置 (雙擊還原)</span>
+              <span>滾輪縮放畫布；點擊圓圈聚焦；點擊外圈回到上階；點擊空白回到最上階；Top 5 標籤可按住滑鼠拖曳調整位置</span>
             </div>
           </div>
 

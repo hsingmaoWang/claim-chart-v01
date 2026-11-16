@@ -259,7 +259,7 @@ const SunburstView = ({
       customdata.push({ name: node.name, count: node.realCount });
 
       // Requirement 2: Place count on the second line (multi-line label with <br>)
-      const formattedLabel = node.id === 'root' ? `${node.name}<br>${node.realCount} 件` : `${node.name}<br>${node.realCount} 件`;
+      const formattedLabel = node.id === 'root' ? `${node.name}<br><br>${node.realCount} 件` : `${node.name}<br>${node.realCount}`;
       labels.push(formattedLabel);
 
       patentsListPerNode.push(Array.from(node.patentsMap.values()));
